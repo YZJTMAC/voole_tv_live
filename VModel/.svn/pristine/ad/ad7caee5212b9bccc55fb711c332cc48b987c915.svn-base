@@ -1,0 +1,125 @@
+package com.gntv.tv.model.base;
+
+import java.util.Timer;
+import java.util.TimerTask;
+
+import android.app.Service;
+import android.content.Intent;
+import android.os.Binder;
+import android.os.IBinder;
+
+import com.gntv.tv.common.utils.DateUtil;
+import com.gntv.tv.common.utils.LogUtil;
+import com.gntv.tv.model.cache.CacheManager;
+import com.gntv.tv.model.channel.ProgramManager;
+import com.gntv.tv.model.channel.ProgramManager.ProgramType;
+import com.gntv.tv.model.time.TimeManager;
+
+public class VLService extends Service{
+	private MyBinder myBinder = new MyBinder();
+	private long beginTime;
+	private final long MODE_TIME = 2*3600*1000;
+	//private final long MODE_TIME = 300*1000;
+
+	@Override
+	public IBinder onBind(Intent intent) {
+		LogUtil.d("TimerService--->onBind");
+		return myBinder;
+	}
+	
+	@Override
+	public void onRebind(Intent intent) {
+		LogUtil.d("TimerService--->onRebind");
+		super.onRebind(intent);
+	}
+	
+	@Override
+	public boolean onUnbind(Intent intent) {
+		LogUtil.d("TimerService--->onUnbind");
+		return super.onUnbind(intent);
+	}
+	
+	@Override
+	public void onCreate() {
+		LogUtil.d("TimerService--->onCreate");
+//		getServerTime();
+		startTimer();
+		super.onCreate();
+	}
+	
+	@Override
+	public int onStartCommand(Intent intent, int flags, int startId) {
+		LogUtil.d("TimerService--->onStartCommand");
+		return super.onStartCommand(intent, flags, startId);
+	}
+	
+	@Override
+	public void onDestroy() {
+		LogUtil.d("TimerService--->onDestroy");
+		cancelTimer();
+		super.onDestroy();
+	}
+	
+	/*private void getServerTime(){
+		new Thread(){
+			public void run() {
+				TimeManager.GetInstance().getServerTime();
+			};
+		}.start();
+	}*/
+	
+	private static final int TIME_INTERVAL = 1 * 1000;
+	private Timer timer = null;
+	private TimerTask timerTask = null;
+	private class TimeTask extends TimerTask{
+		@Override
+		public void run() {
+			TimeManager.GetInstance().addCurrentTime(TIME_INTERVAL);
+			
+			long cTime = TimeManager.GetInstance().getCurrentTime();
+			String TIME_PATTERN = "kk:mm:ss";
+			String s = DateUtil.msec2String(cTime, TIME_PATTERN);
+			long subTime = cTime - beginTime;
+			if("00:30:00".equals(s)){
+				LogUtil.i("开始跨天更新数据::"+s);
+				CacheManager.GetInstance().clear();
+				ProgramManager.GetInstance().getTodayProgramInfo(ProgramType.ALL);
+				TimeManager.GetInstance().notifyKT();
+			}
+			
+			if(subTime%MODE_TIME == 0){
+				TimeManager.GetInstance().notifyUpdateChannel();
+			}
+			
+		}
+	}
+	private void startTimer(){
+		LogUtil.d("startTimer");
+		cancelTimer();
+		beginTime = TimeManager.GetInstance().getCurrentTime();
+		if(timer == null){
+			timer = new Timer();
+			timerTask = new TimeTask();
+			timer.schedule(timerTask, 0, TIME_INTERVAL);
+		}
+	}
+	private void cancelTimer(){
+		LogUtil.d("cancelTimer");
+		if (timerTask != null) {
+			timerTask.cancel();
+			timerTask = null;
+		}
+		if (timer != null) {
+			timer.cancel();
+			timer.purge();
+			timer = null;
+		}
+	}
+	
+	
+	public class MyBinder extends Binder{
+		public VLService getService(){
+			return VLService.this;
+		}
+	}
+}

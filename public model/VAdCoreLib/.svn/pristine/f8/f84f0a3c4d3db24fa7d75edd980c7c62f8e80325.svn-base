@@ -1,0 +1,22 @@
+/**
+ *
+ */
+package com.vad.sdk.core.base.interfaces;
+
+import com.vad.sdk.core.base.MediaInfo;
+
+/**
+ *
+ * @author luojunsheng
+ * @date 2016年9月2日 下午2:02:13
+ * @version 1.1
+ */
+public interface IAdViewListener {
+  /**
+   * 给View设置数据
+   *
+   * @param info
+   * @param adViewEventListener
+   */
+  public void setAdInfo(MediaInfo mediaInfo, IAdViewEventListener adViewEventListener);
+}

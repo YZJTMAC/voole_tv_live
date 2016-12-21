@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+ <layer-list xmlns:android="http://schemas.android.com/apk/res/android" >
+
+    <item>
+        <shape>
+            <size
+                android:height="15dp"
+                android:width="15dp" />
+
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+   <item android:drawable="@drawable/cs_back_seeking"/> 
+  <!--  <item>
+       <nine-patch android:src="@drawable/cs_back_seeking"
+           android:dither="true"/>
+   </item> -->
+
+</layer-list>
+
+<!-- <shape xmlns:android="http://schemas.android.com/apk/res/android" >
+
+    <padding
+        android:bottom="0dp"
+        android:left="0dp"
+        android:right="0dp"
+        android:top="0dp" />
+
+    <size
+        android:height="7dp"
+        android:width="5dp" />
+	<nine-patch android:src="@drawable/thumd"/>
+</shape>
+ -->

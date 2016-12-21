@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="hintInfo">点击按钮,检测相应功能</string>
+    <string name="update_str">更新 </string>
+    <string name="update_message">您的应用有新版本，为了你更好的体验请您升级。\n你可以点击“确定”按钮进行升级，也点击“取消”按钮放弃升级。</string>
+    <string name="ok">确定</string>
+    <string name="cancel">取消</string>
+    <string name="download_over">下载完毕</string>
+    <string name="download_update">下载更新</string>
+    <string name="download_voole_epg">正在下载优朋影视点播应用</string>
+    <string name="install_update">安装更新</string>
+    <string name="install_alert_str">应用升级包已经下载完毕。\n点击“确定”按钮进行安装。\n如放弃安装，点击"取消"。</string>
+    <string name="server_conn_error">服务器连接异常</string>
+    <string name="file_not_found">找不到安装文件</string>
+    <string name="server_stop_str">服务运行异常</string>
+    <string name="user_cancelled_str">已取消升级</string>
+    <string name="force_upgrade_str">为了不影响您使用请您务必升级</string>
+    <string name="helpInfo">正在加载帮助信息^^.....</string>
+    <string name="menu_settings">Settings</string>
+    <string name="title_activity_show_about">关于信息</string>
+    <string name="title_activity_show_help">帮助信息</string>
+    <string name="gotoHelp">获取帮助</string>
+    <string name="gotoReportUp">提交升级信息</string>
+    <string name="gotoReportLocalInfo">提交用户信息</string>
+    <string name="gotoReportException">提交异常</string>
+    <string name="gotoGetFeedBack">来点建议</string>
+    <string name="gotoAbout">关于信息</string>
+    <string name="gotoDownload">检测更新</string>
+    <string name="getFeedBackTypeBtn">获取反馈类型</string>
+    <string name="saveFeedBackInfoBtn">提交反馈</string>
+    <string name="aboutInfo">正在加载关于信息&gt;&gt;&gt;</string>
+    <string name="updateResult">提交升级信息反馈</string>
+    <string name="getfeedBacdText">获取反馈类型</string>
+    <string name="feedBacdInfoText">要提交的建议</string>
+    <string name="saveFeedBackInfo">提交反馈格式必须是类型对应code</string>
+    <string name="title_activity_report_upgrade_info">提交升级信息</string>
+    <string name="hello_world">Hello world!</string>
+    <string name="title_activity_feed_back">FeedBackActivity</string>
+    <string name="title_activity_feed_back_info">FeedBackInfoActivity</string>
+    <string name="title_activity_report_exception">ReportExceptionActivity</string>
+
+</resources>

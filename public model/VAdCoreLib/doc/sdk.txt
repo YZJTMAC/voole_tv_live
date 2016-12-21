@@ -1,0 +1,54 @@
+1.关于Auth和Proxy
+    1.1为啥每个 app 都需要这些东西?
+    1.2为啥 Auth 有时候需要在 adb shell 环境下杀掉重新启动?
+            5176 10067     524m S    com.voole.cinema
+            5203 10067     5036 S    vooleauthdch
+            5359 10067    18888 S    videodaemonch
+            5475 10078     478m S    com.voole.ep.playertest
+            5492 10078     7048 S    vooleauthd
+            5496 10078    39268 S    videodaemon
+       
+2.关于广告
+3.关于oemid
+  oem = 厂商的意思
+4.关于 AD
+      private String adxml;
+      private String reqno;
+      private String priview;
+      private String priviewTime;
+      private String delayDeduct;
+      private String pid;
+      private String playUrl;
+      private String authCode;
+5.
+6.
+7.
+8.
+9.
+10.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

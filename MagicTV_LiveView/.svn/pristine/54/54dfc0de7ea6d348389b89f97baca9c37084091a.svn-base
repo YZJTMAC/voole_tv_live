@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+        <declare-styleable  name="detect_item">
+
+        <attr name="textColor" format="color"/>
+
+        <attr name="textSize" format="dimension"/>
+        
+        <attr name="midText" format="string"/>
+        
+        <attr name="stateTipText" format = "string" />
+        
+        <attr name="midTextPaddingLeft" format="dimension"/>
+    </declare-styleable>
+</resources>

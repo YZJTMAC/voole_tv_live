@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/detect_dialog"
+    android:orientation="vertical" >
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="110px"
+        android:layout_weight="0.7" >
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerHorizontal="true"
+            android:layout_centerVertical="true"
+            android:textColor="@android:color/white"
+            android:textSize="36px" />
+    </RelativeLayout>
+
+    <TextView
+        android:id="@+id/content_tv"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_weight="0.7"
+        android:gravity="start"
+        android:maxLines="4"
+        android:layout_marginTop="5dp"
+        android:layout_marginBottom="15dp"
+        android:layout_marginLeft="40dp"
+        android:layout_marginRight="40dp"
+        android:scrollbars="vertical"
+        android:singleLine="false"
+        android:textColor="@android:color/white"
+        android:textSize="30px" />
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1.4"
+        android:layout_marginBottom="58px" >
+        
+        <View
+            android:id="@+id/dialog_center_view"
+            android:layout_width="1px"
+            android:layout_height="1px"
+            android:layout_centerInParent="true" />
+
+        <Button
+            android:id="@+id/positiveButton"
+            android:layout_width="231px"
+            android:layout_height="105px"
+            android:layout_alignParentTop="true"
+            android:layout_marginRight="35px"
+            android:layout_toLeftOf="@+id/dialog_center_view"
+            android:background="@drawable/dialog_button_background_selector"
+            android:ems="6"
+            android:gravity="center"
+            android:textColor="@drawable/dialog_button_focus_textview_text_selector"
+            android:textSize="36px" >
+            <requestFocus />
+        </Button>
+
+        <Button
+            android:id="@+id/negativeButton"
+          	android:layout_width="231px"
+            android:layout_height="105px"
+            android:layout_alignParentTop="true"
+            android:layout_marginLeft="35px"
+            android:layout_toRightOf="@+id/dialog_center_view"
+            android:background="@drawable/dialog_button_background_selector"
+            android:ems="6"
+            android:gravity="center"
+            android:textColor="@drawable/dialog_button_focus_textview_text_selector"
+            android:textSize="36px" />
+    </RelativeLayout>
+</LinearLayout>

@@ -1,0 +1,145 @@
+package com.vad.sdk.core.controller.v30;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import android.view.KeyEvent;
+
+import com.vad.sdk.core.VAdSDK;
+import com.vad.sdk.core.VAdType;
+import com.vad.sdk.core.Utils.v30.Lg;
+import com.vad.sdk.core.base.AdPos;
+import com.vad.sdk.core.model.v30.AdPosBaseListener.IAdPosStatusListener;
+import com.vad.sdk.core.model.v30.AdPosTVDLiveListener;
+
+class AdLivePlayerController extends AdBasePlayerController {
+  private AdPosTVDLiveListener adposScene = null;
+  private boolean isView = false;
+  private Timer mTimer = null;
+  private TimerTask mTimerTask = null;
+  private static final int TIME_PERIOD = 1000;
+
+  @Override
+  public void onPrepare(String adXml, Map<String, String> extMaps) {
+    // NOTE(ljs):直播与点播不同,在adXml没有广告节点,需要用adposid主动向导流平台获取广告数据
+    Lg.d("AdLivePlayerController , onPrepare()");
+    if (mAdRegister != null && mAdRegister.defaultreporturl != null && mAdRegister.defaultadinf != null) {
+      String channelCode = "";
+      String channelType= "";
+      if (extMaps != null && extMaps.size() > 0) {
+        channelCode = extMaps.get("channelCode") == null ? "" : extMaps.get("channelCode").toString();
+        channelType = extMaps.get("channelType") == null ? "" : extMaps.get("channelType").toString();
+      }
+      Lg.e("AdLivePlayerController , onPrepare() , channelCode = " + channelCode);
+      getAdPosData(channelCode,channelType);
+    }
+    super.onPrepare(adXml, extMaps);
+  }
+
+//  private void startPlayerTimer() {
+//    if (mTimer == null) {
+//      mTimer = new Timer();
+//    }
+//    if (mTimerTask == null) {
+//      mTimerTask = new TimerTask() {
+//        @Override
+//        public void run() {
+//          if (adposScene != null) {
+//            adposScene.onTime();
+//          }
+//        }
+//      };
+//      mTimer.schedule(mTimerTask, 0, TIME_PERIOD);
+//    }
+//  }
+
+//  private void stopPlayerTimer() {
+//    if (mTimer != null) {
+//      mTimer.cancel();
+//      mTimer = null;
+//    }
+
+//    if (mTimerTask != null) {
+//      mTimerTask.cancel();
+//      mTimerTask = null;
+//    }
+//  }
+
+  @Override
+  public void onStart() {
+    super.onStart();
+  }
+
+  @Override
+  public void onStop() {
+    super.onStop();
+  }
+
+  @Override
+  public void onReset() {
+    if (adposScene != null) {
+      adposScene.hideAd();
+    }
+//    stopPlayerTimer();
+    super.onReset();
+  }
+
+  private void getAdPosData(final String channelCode,final String channelType) {
+	if (adposScene == null) {
+		adposScene = new AdPosTVDLiveListener();
+	}
+    adposScene.setReportUrl(mAdRegister.defaultreporturl);
+    adposScene.setViewGroup(mAdPlayerUIController.getAdView());
+    adposScene.setAdPosStatusListener(new IAdPosStatusListener() {
+      @Override
+      public void onAdStart() {
+        isView = true;
+      }
+
+      @Override
+      public void onAdEnd() {
+        isView = false;
+      }
+    });
+    new Thread(new Runnable() {
+      @Override
+      public void run() {
+        List<AdPos> datas = VAdSDK.getInstance().getAdLiveInfos(VAdType.AD_PLAY_Z_TVD_LIVE, "", "", channelCode, "", "");
+        if (datas != null && datas.size() > 0) {
+          for (AdPos adPos : datas) {
+            if (adPos != null && VAdType.AD_PLAY_Z_TVD_LIVE.equals(adPos.id)) {
+              adposScene.setData(adPos);
+               adposScene.onTime();
+            }
+          }
+        }
+      }
+    }).start();
+  }
+
+  @Override
+  public boolean onKeyDown(int keyCode) {
+    if (keyCode == KeyEvent.KEYCODE_BACK) {
+      if (adposScene != null) {
+        // adposScene.hideAd();
+      }
+    }
+    if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+      if (isView && adposScene != null) {
+        // adposScene.open();
+      }
+    }
+    return super.onKeyDown(keyCode);
+  }
+
+  @Override
+  public boolean onError(int what, int extra) {
+    if (adposScene != null) {
+      adposScene.hideAd();
+    }
+//    stopPlayerTimer();
+    return super.onError(what, extra);
+  }
+}

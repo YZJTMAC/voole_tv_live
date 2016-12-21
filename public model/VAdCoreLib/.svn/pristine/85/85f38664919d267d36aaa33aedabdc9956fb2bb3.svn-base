@@ -1,0 +1,26 @@
+/**
+ *
+ */
+package com.vad.sdk.core.base.interfaces;
+
+import android.view.View;
+
+/**
+ *
+ * @author luojunsheng
+ * @date 2016年9月2日 下午2:02:13
+ * @version 1.1
+ */
+public interface IAdViewEventListener {
+  /**
+   * view 的点击事件回调
+   *
+   * @param view
+   *          被点击的view
+   * @param position
+   *          当前的position
+   * @param tag
+   *          追踪方法被调用对象,传递ClassSimpleName
+   */
+  public void onClick(View view, int position, String tag);
+}

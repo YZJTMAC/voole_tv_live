@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- <color  name="focus1">#3299e9</color> -->
+    <color name="white">#ffffff</color>
+    <color name="light_white">#f1f1f1</color>
+    <color name="dark_text">#f1f1f1</color>
+    <color name="deep_text">#696969</color>
+    <color name="blue_text">#69bcfc</color>
+    <color name="light_blue_text">#69bcfc</color>
+    <color name="dark_blue_text">#5288b2</color>
+    <color name="bg_color">#bf000000</color>
+    <color name="bg_buttton">#33B2B6BB</color>
+    <color name="transparency">#00000000</color>
+    <color name="title_color">#33ffffff</color>
+</resources>

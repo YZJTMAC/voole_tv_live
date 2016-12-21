@@ -1,0 +1,29 @@
+<resources>
+	<string name="num_tip">无此频道</string>
+	<string name="sort_type">频道分类</string>
+	<string name="channel_list">频道列表</string>
+	<string name="program_list">节目列表</string>
+	<string name="date">时间列表</string>
+	<string name="none_program">暂无节目单</string>
+	<string name="checkstr">待检测</string>
+	<string name="back_to_live">回到直播</string>
+	<string name="watch_movie">看大片</string>
+	<string name="back_stay">您确定要退出回看?</string>
+	<string name="error_live">亲，当前频道播放异常，换个台试试吧。</string>
+	<string name="error_back">亲，当前频道播放异常，换个台试试吧。</string>
+	<string name="error_resource">当前源无法播放，请切台重试</string>
+	<string name="error_movie">您尚未安装影视应用，请点击【确定】\n下载安装。</string>
+	<string name="btn_sure">确定</string>
+	<string name="btn_cancel">取消</string>
+	<string name="server_error">您好，服务器繁忙，请重试或切换其它频道。</string>
+	<string name="server_conn_error">服务器连接异常</string>
+	<string name="buffer_tip1">OK/确认键查看全部节目单</string>
+	<string name="buffer_tip2">菜单键呼出设置选项</string>
+	<string name="buffer_tip3">长按OK/确认键收藏当前频道</string>	
+	<string name="buffer_tip4">请按菜单键切换到流畅模式</string>	
+	<string name="back_tip">无回看节目</string>
+	<string name="loaded_data">正在更新数据请稍候操作</string>
+	<string name="downloaddialog_button_background">后台下载</string>
+	<string name="downloaddialog_button_cancel">取消下载</string>
+	<string name="shift_tip">当前频道不支持时移</string>
+</resources>

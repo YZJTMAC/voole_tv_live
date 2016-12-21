@@ -1,0 +1,82 @@
+package com.vad.sdk.core.base.interfaces;
+
+import java.util.List;
+
+import android.content.Context;
+import android.view.ViewGroup;
+
+import com.vad.sdk.core.base.AdPos;
+import com.vad.sdk.core.base.MediaInfo;
+import com.vad.sdk.core.view.v30.ExitAdView.OnItemClickListener;
+
+public interface IAdController {
+  public static final int PLAY_TYPE_EPG = 1;
+  public static final int PLAY_TYPE_LIVE = 2;
+
+  public boolean register(String apkId);
+
+  public boolean register(String apkId, String defaultadinf, String defaultreporturl);
+
+  public void release();
+
+  public IAdEpgOperationHandler getEpgOperationHandler();
+
+  public IAdHomeEpgOperationHandler getHomeEpgOperationHandler();
+
+  public void showAd(String posId, Context context, ViewGroup parent, String mid, String fid, String channelCode, String mtype, OnItemClickListener listener);
+
+  // public boolean showApkStartAd(String posId, ViewGroup parent, IAdStartupListener listener);
+  /**
+   * 展示apk启动广告
+   *
+   * @param parent
+   * @param listener
+   * @param isShowTime
+   *          是否展示倒计时
+   * @return
+   */
+  public boolean showApkStartAd(ViewGroup parent, IAdStartupListener listener, boolean isShowTime);
+
+  /**
+   * 更新开机广告
+   *
+   * @param context
+   */
+  public void updateApkStartAd(Context context);
+
+  /**
+   * http 获取广告xml数据
+   *
+   * @param posId
+   * @param mid
+   * @param fid
+   * @param channelCode
+   * @param mtype
+   * @param cattype
+   * @return
+   */
+  public List<AdPos> getAdInfos(String posId, String mid, String fid, String channelCode, String mtype, String cattype);
+
+  /**
+   * 本地解析广告xml数据
+   *
+   * @param rawData
+   * @return
+   */
+  public List<AdPos> getAdInfos(String rawData);
+
+  public String getAdVersion();
+
+  // public String getPlayerAdUrl(int type, String mid, String fid, String channelCode, String
+  // mtype);
+
+  public String getPlayerAdUrl(int type, String mid, String fid, String channelCode, String mtype, boolean isSupportTVC);
+
+  public void initPlayerAd(int type, Context context, IAdPlayer adPlayer, IAdPlayerUIController adPlayerUIController);
+
+  public void releasePlayerAd();
+
+  public List<MediaInfo> getApkExitAdInfos(String adPosid);
+
+  public void open(MediaInfo mediaInfo, Context context, String AdPosid);
+}

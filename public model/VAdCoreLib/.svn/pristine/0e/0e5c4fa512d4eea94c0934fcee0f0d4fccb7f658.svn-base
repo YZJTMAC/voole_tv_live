@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/detect_dialog" >
+
+    <View
+        android:id="@+id/downloaddialog_center_view"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:layout_centerInParent="true" />
+
+    <TextView
+        android:id="@+id/downloaddialog_progress_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_above="@+id/downloaddialog_center_view"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="65dp"
+        android:text="下载中"
+        android:textColor="@android:color/white"
+        android:textSize="28sp" />
+
+    <com.vad.sdk.core.view.v30.DownLoadProgressView
+        android:id="@+id/tvd_downloaddialog_progressView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@+id/downloaddialog_center_view"
+        android:layout_marginBottom="10dp"
+        android:layout_marginLeft="60px"
+        android:layout_marginRight="60px" />
+
+    <Button
+        android:id="@+id/positiveButton"
+        android:layout_width="170dp"
+        android:layout_height="80dp"
+        android:layout_below="@+id/downloaddialog_center_view"
+        android:layout_centerVertical="true"
+        android:layout_marginTop="20px"
+        android:layout_toLeftOf="@+id/downloaddialog_center_view"
+        android:background="@drawable/dialog_button_background_selector"
+        android:ems="6"
+        android:text="后台下载"
+        android:layout_marginRight="22dp"
+        android:textColor="@drawable/dialog_button_focus_textview_text_selector"
+        android:textSize="30sp" >
+
+        <requestFocus />
+    </Button>
+
+    <Button
+        android:id="@+id/negativeButton"
+        android:layout_width="170dp"
+        android:layout_height="80dp"
+        android:layout_below="@+id/downloaddialog_center_view"
+        android:layout_centerVertical="true"
+        android:layout_marginTop="20px"
+        android:layout_toRightOf="@+id/downloaddialog_center_view"
+        android:background="@drawable/dialog_button_background_selector"
+        android:ems="6"
+        android:text="取消下载"
+        android:layout_marginLeft="22dp"
+        android:textColor="@drawable/dialog_button_focus_textview_text_selector"
+        android:textSize="30sp" />
+
+</RelativeLayout>

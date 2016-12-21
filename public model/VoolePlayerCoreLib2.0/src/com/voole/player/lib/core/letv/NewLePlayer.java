@@ -1,0 +1,370 @@
+package com.voole.player.lib.core.letv;
+
+import android.content.Context;
+import android.os.Bundle;
+import android.view.View;
+import android.widget.RelativeLayout;
+
+import com.gntv.tv.common.ap.Ad;
+import com.gntv.tv.common.utils.LogUtil;
+import com.gntv.tv.common.utils.NetUtil;
+import com.lecloud.sdk.constant.PlayerEvent;
+import com.lecloud.sdk.constant.PlayerParams;
+import com.lecloud.sdk.constant.StatusCode;
+import com.lecloud.sdk.player.IPlayer;
+import com.lecloud.sdk.player.base.BaseMediaPlayer;
+import com.lecloud.sdk.surfaceview.ISurfaceView;
+import com.lecloud.sdk.surfaceview.impl.BaseSurfaceView;
+import com.lecloud.sdk.videoview.IMediaDataVideoView;
+import com.lecloud.sdk.videoview.VideoViewListener;
+import com.voole.player.lib.core.VooleMediaPlayer;
+import com.voole.player.lib.core.VooleMediaPlayerListener;
+import com.voole.player.lib.core.ad.AdPlayer;
+import com.voole.player.lib.core.interfaces.IPlayReport;
+
+public class NewLePlayer extends AdPlayer {
+	
+	private IPlayer mPlayer = null;
+	
+	private IMediaDataVideoView videoView = null;
+	
+	private boolean isLive = false;
+	
+	private boolean isConnected = true;
+	/**
+	 * 乐视播放器广告播放逻辑为: AD_START->PLAY_COMPLETION->AD_COMPLETE, 
+	 * 为了避免广告结束前走播放结束的逻辑，添加改字段，仅当isAdStart为false是才走退出的逻辑
+	 */
+	private boolean isAdStart = false;
+	
+	@Override
+	public void initPlayer(VooleMediaPlayer vmp, Context context, VooleMediaPlayerListener l, IPlayReport report) {
+		LogUtil.d("NewLePlayer-->initPlayer");
+    	initMediaPlayer(context);
+		super.initPlayer(vmp, context, l, report);
+	}
+	
+	private void initMediaPlayer(Context context) {
+		
+	}
+
+	@Override
+	public void setLooping(boolean looping) {
+	}
+
+	@Override
+	public int getVideoHeight() {
+		LogUtil.d("NewLePlayer->getVideoHeight");
+		if (mPlayer != null) {
+			return mPlayer.getVideoHeight();
+		}
+		return 0;
+	}
+
+	@Override
+	public int getVideoWidth() {
+		LogUtil.d("NewLePlayer->getVideoWidth");
+		if (mPlayer != null) {
+			return mPlayer.getVideoWidth();
+		}
+		return 0;
+	}
+
+	@Override
+	public void setVolume(float leftVolume, float rightVolume) {
+		LogUtil.d("NewLePlayer->setVolume");
+		if (mPlayer != null) {
+			mPlayer.setVolume(leftVolume, rightVolume);
+		}
+	}
+
+	@Override
+	public void recycle() {
+
+	}
+
+	@Override
+	protected void su_originalSeek(int msec) {
+		LogUtil.d("NewLePlayer->su_originalSeek");
+		if (mPlayer != null && !isLive) {
+			mPlayer.seekTo(msec);
+		}
+	}
+
+	@Override
+	protected void su_originalStop() {
+		LogUtil.d("NewLePlayer->su_originalStop");
+		if (mPlayer != null) {
+			mPlayer.stop();
+		}
+	}
+
+	@Override
+	protected void su_originalInit(Context context) {
+		LogUtil.d("NewLePlayer->su_originalInit");
+		if (videoView != null) {
+			videoView.setVideoViewListener(mVideoViewListener);
+		}
+	}
+
+	@Override
+	protected void su_originalPrepare(Ad ad) {
+		LogUtil.d("NewLePlayer->su_originalPrepare");
+		mVooleMediaPlayer.removeAllViews();
+		videoView = null;
+		mPlayer = null;
+		Bundle bundle = null;
+		if ("2".equals(ad.getIsLiveShow())) {
+			//直播
+			isLive = true;
+			if (videoView == null) {
+				videoView = new CPActionLiveVideoView(mContext);
+				videoView.setVideoViewListener(mVideoViewListener);
+			}
+			if (mPlayer == null) {
+				mPlayer = ((CPActionLiveVideoView)videoView).getMediaPlayer();
+			}
+			bundle = LetvParamsUtils.setActionLiveParams(ad.getLefid(), false, ad.getLep(), ad.getLeuu());
+		} else {
+			//点播
+			isLive = false;
+			if (videoView == null) {
+				videoView = new CPVodVideoView(mContext);
+				videoView.setVideoViewListener(mVideoViewListener);
+			}
+			if (mPlayer == null) {
+				mPlayer = ((CPVodVideoView)videoView).getMediaPlayer();
+			}
+			bundle = LetvParamsUtils.setVodParams(ad.getLeuu(), ad.getLefid(), "", "", "", ad.getLep());
+		}
+		mVooleMediaPlayer.addView((View) videoView, new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, 
+				RelativeLayout.LayoutParams.MATCH_PARENT));
+		videoView.setDataSource(bundle);
+	}
+
+	@Override
+	protected void su_originalStart() {
+		LogUtil.d("NewLePlayer->su_originalStart");
+		if (mPlayer != null) {
+			mPlayer.start();
+		} else {
+			if (videoView != null) {
+				videoView.onStart();
+			}
+		}
+	}
+
+	@Override
+	protected void su_originalPause() {
+		LogUtil.d("NewLePlayer->su_originalPause");
+		if (mPlayer != null) {
+			mPlayer.pause();
+		} else {
+			if (videoView != null) {
+				videoView.onPause();
+			}
+		}
+	}
+
+	@Override
+	protected void su_originalReset() {
+		LogUtil.d("NewLePlayer->su_originalReset");
+		if (mPlayer != null) {
+			mPlayer.reset();
+		} else {
+			if (videoView != null) {
+				videoView.stopAndRelease();
+			}
+		}
+	}
+
+	@Override
+	protected int su_originalGetDuration() {
+		if (videoView != null && !isLive) {
+			if (mPlayer != null) {
+//				LogUtil.d("NewLePlayer->su_originalGetDuration, mPlayer, duration = " + mPlayer.getDuration());
+				return (int) mPlayer.getDuration();
+			} else {
+				return (int) videoView.getDuration();
+			}
+		}
+		//直播断网后恢复网络
+		if (!isConnected && NetUtil.isNetWorkAvailable(mContext)) {
+			if (mPlayer != null) {
+				LogUtil.d("NewLePlayer->su_originalGetDuration, 断网后恢复，重新请求播放...");
+				isConnected = true;
+				((BaseMediaPlayer)mPlayer).clearDataSource();
+				mPlayer.retry();
+			} else {
+				LogUtil.d("NewLePlayer->su_originalGetDuration, 断网后恢复，但是mediaplayer为空");
+			}
+		}
+		return 0;
+	}
+
+	@Override
+	protected int su_originalGetCurrentPosition() {
+		if (videoView != null && !isLive) {
+			if (mPlayer != null) {
+//				LogUtil.d("NewLePlayer->su_originalGetDuration, mPlayer, currentPosition = " + mPlayer.getCurrentPosition());
+				return (int) mPlayer.getCurrentPosition();
+			} else {
+				return (int) videoView.getCurrentPosition();
+			}
+		}
+		return 0;
+	}
+
+	@Override
+	protected boolean isLive() {
+		return isLive;
+	}
+	
+	VideoViewListener mVideoViewListener = new VideoViewListener() {
+
+        @Override
+        public void onStateResult(int event, Bundle bundle) {
+//            handleVideoInfoEvent(event, bundle);// 处理视频信息事件
+            handlePlayerEvent(event, bundle);// 处理播放器事件
+            handleLiveEvent(event, bundle);// 处理直播类事件,如果是点播，则这些事件不会回调
+
+        }
+    };
+    
+    private void handlePlayerEvent(int state, Bundle bundle) {
+    	switch (state) {
+	    	case PlayerEvent.AD_START:
+	    		LogUtil.d("NewLePlayer->handlePlayerEvent, AD_START");
+	    		isAdStart = true;
+	    		break;
+	    	case PlayerEvent.AD_COMPLETE:
+	    		LogUtil.d("NewLePlayer->handlePlayerEvent, AD_COMPLETE");
+	    		isAdStart = false;
+	    		break;
+	    	case PlayerEvent.AD_ERROR:
+	    		LogUtil.d("NewLePlayer->handlePlayerEvent, AD_ERROR");
+	    		break;
+	    	case PlayerEvent.AD_PROGRESS:
+	    		LogUtil.d("NewLePlayer->handlePlayerEvent, AD_PROGRESS");
+	    		break;
+	    	case PlayerEvent.AD_TIME:
+	    		LogUtil.d("NewLePlayer->handlePlayerEvent, AD_TIME");
+	    		break;
+	        case PlayerEvent.PLAY_VIDEOSIZE_CHANGED:
+	            /**
+	             * 获取到视频的宽高的时候，此时可以通过视频的宽高计算出比例，进而设置视频view的显示大小。
+	             * 如果不按照视频的比例进行显示的话，(以surfaceView为例子)内容会填充整个surfaceView。
+	             * 意味着你的surfaceView显示的内容有可能是拉伸的
+	             */
+	        	//添加点播按比例显示视频
+	        	 if (videoView != null) {
+	        		 ISurfaceView surfaceView = null;
+	        		 if (videoView instanceof CPActionLiveVideoView) {
+	        			 surfaceView = ((CPActionLiveVideoView)videoView).getSurfaceView();
+	        		 } else if(videoView instanceof CPVodVideoView) {
+	        			 surfaceView = ((CPVodVideoView)videoView).getSurfaceView();
+	        		 }
+	        		 if (surfaceView != null && surfaceView instanceof BaseSurfaceView) {
+	        			 ((BaseSurfaceView)surfaceView).setDisplayMode(BaseSurfaceView.DISPLAY_MODE_SCALE_ZOOM);
+	                     int width = bundle.getInt(PlayerParams.KEY_WIDTH);
+	                     int height = bundle.getInt(PlayerParams.KEY_HEIGHT);
+	                     LogUtil.d("NewLePlayer->handlePlayerEvent, width = " + width + ", height = " + height);
+	                     // 宽小于高时，按比例显示
+	                     if (width <= height) {
+	                    	 ((BaseSurfaceView)surfaceView).onVideoSizeChanged(width, height);
+	                     }
+	        		 }
+	        	 }
+	            break;
+	        case PlayerEvent.PLAY_PREPARED:
+	            // 播放器准备完成，此刻调用start()就可以进行播放了
+	        	LogUtil.d("NewPlayer, PLAY_PREPARED");
+	        	mCurrentStatus = Status.Prepared;
+				Runnable appTask_prepared = new Runnable() {
+					@Override
+					public void run() {
+						notifyOnPrepared();
+					}
+				};
+
+				if (mVooleAdEventListener != null) {
+					mVooleAdEventListener.onPrepared(appTask_prepared);
+				} else {
+					appTask_prepared.run();
+				}
+	            break;
+	        case PlayerEvent.PLAY_COMPLETION:
+	        	LogUtil.d("NewPlayer, PLAY_COMPLETION");
+	        	if (!isAdStart) {
+	        		if (NetUtil.isNetWorkAvailable(mContext)) {
+		        		LogUtil.d("NewPlayer, PLAY_COMPLETION, connected");
+		        		Runnable appTask_completion = new Runnable() {
+							@Override
+							public void run() {
+								notifyOnCompletion();
+								mPreviewTime = 0;
+							}
+						};
+
+						if (mVooleAdEventListener != null) {
+							mVooleAdEventListener.onCompletion(appTask_completion);
+						} else {
+							appTask_completion.run();
+						}
+		        	} else {
+		        		isConnected = false;
+		        		LogUtil.d("NewPlayer, PLAY_COMPLETION, disconnected");
+		        	}
+	        	}
+	        	break;
+	        case PlayerEvent.PLAY_BUFFERING:
+	        	LogUtil.d("NewPlayer, PLAY_BUFFERING");
+	        	break;
+	        case PlayerEvent.PLAY_INFO:
+	        	int code = bundle.getInt(PlayerParams.KEY_RESULT_STATUS_CODE);
+	        	LogUtil.d("NewPlayer, PLAY_INFO, code = " + code);
+	        	if (code == StatusCode.PLAY_INFO_BUFFERING_START) {
+	        		if (mVooleAdEventListener != null) {
+						mVooleAdEventListener.onInfo(701, 701);
+					}
+					notifyOnInfo(701, 701);
+	        	} else if (code == StatusCode.PLAY_INFO_BUFFERING_END) {
+	        		if (mVooleAdEventListener != null) {
+						mVooleAdEventListener.onInfo(702, 702);
+					}
+					notifyOnInfo(702, 702);
+	        	}
+	        	break;
+	        case PlayerEvent.PLAY_ERROR:
+	        	LogUtil.d("NewPlayer, PLAY_ERROR");
+	        	int errorCode = bundle.getInt("errorCode");
+//				String errorMsg = bundle.getString("errorMsg");
+	        	if (mVooleAdEventListener != null) {
+					mVooleAdEventListener.onError(errorCode, errorCode);
+				}
+//				mCurrentStatus = Status.Error;
+				notifyOnError(errorCode, errorCode);
+	        	break;
+	        case PlayerEvent.PLAY_LOADINGSTART:
+	        	LogUtil.d("NewPlayer, PLAY_LOADINGSTART");
+	        	break;
+	        case PlayerEvent.PLAY_SEEK_COMPLETE:
+	        	LogUtil.d("NewPlayer, PLAY_SEEK_COMPLETE");
+	        	notifyOnSeekComplete();
+	        	break;
+	        default:
+	            break;
+	    }
+    }
+    
+    private void handleLiveEvent(int state, Bundle bundle) {
+    	
+    }
+
+	@Override
+	protected void su_originalPrepare(String playUrl) {
+		// TODO Auto-generated method stub
+		
+	}
+
+}

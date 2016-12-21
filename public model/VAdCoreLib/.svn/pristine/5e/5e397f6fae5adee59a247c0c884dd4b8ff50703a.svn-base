@@ -1,0 +1,264 @@
+package com.vad.sdk.core.view.v30;
+
+import java.io.File;
+import java.text.NumberFormat;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.DialogInterface.OnClickListener;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Message;
+import android.text.TextUtils;
+import android.view.WindowManager;
+import android.widget.Toast;
+
+import com.vad.sdk.core.Config;
+import com.vad.sdk.core.R;
+import com.vad.sdk.core.Utils.v30.Lg;
+import com.vad.sdk.core.manager.SharedPreferencesManager;
+import com.voole.android.client.UpAndAu.downloader.ApkDownloader;
+import com.voole.android.client.UpAndAu.downloader.FileDownLoaderListener;
+import com.voole.android.client.UpAndAu.upgrade.UpgradeManager;
+
+public class DownloadForTVD {
+	
+  private static final int END_UPGRADE = 100;
+  public static final int HAS_UPGRADE = 101;
+  private static final int ERROR_UPGRADE = 102;
+  private static final int UPGRADE_PROGRESS = 103;
+  private static final int START_UPGRADE = 104;
+  private String apkName = null;
+  private String saveFilePath = null;
+  private Activity mActivity = null;
+  private boolean mIsLoading = false;
+  
+  private DownLoadDialog.Builder downLoadDialogBuild = null;
+  private DownLoadDialog downloadProgressDialog = null;
+  private final NumberFormat numberFormat = NumberFormat.getPercentInstance();
+  private ApkDownloader apkLoader;
+  private String mCurrentDownloadUrl;
+  private int fileSize = 0;
+  private int currentSize = 0;
+  
+	private Handler handler = new Handler() {
+		@Override
+		public void handleMessage(Message msg) {
+			switch (msg.what) {
+			case END_UPGRADE:
+				if (downloadProgressDialog != null) {
+					downLoadDialogBuild.setProgress(downLoadDialogBuild.getMaxProgress());
+					downLoadDialogBuild.setMessage("下载完毕");
+					downloadProgressDialog.dismiss();
+					downloadProgressDialog = null;
+					mCurrentDownloadUrl=null;
+					 mIsLoading = false;
+					 
+				}
+				new TVAlertDialog.Builder(mActivity)
+						.setTitle("软件包下载完毕,请您安装").setCancelable(false)
+						.setPositiveButton("确定",new DialogInterface.OnClickListener() {
+									@Override
+									public void onClick(DialogInterface dialog,int whichButton) {
+										installApp();
+										dialog.cancel();
+										mCurrentDownloadUrl = null;
+										downLoadDialogBuild= null ;
+										mIsLoading = false;
+									}
+								}).create().show();
+				SharedPreferencesManager.putBoolean(Config.SHARED_PREFERENCES_SET,Config.SHARED_PREFERENCES_DOWN_LODING,false);
+				SharedPreferencesManager.putString(Config.SHARED_PREFERENCES_SET,Config.SHARED_PREFERENCES_DOWN_NAME,"");
+				break;
+			case ERROR_UPGRADE:
+				if (downloadProgressDialog != null) {
+					downloadProgressDialog.dismiss();
+					downloadProgressDialog = null;
+				}
+				new TVAlertDialog.Builder(mActivity).setCancelable(false)
+						.setTitle("下载文件时出现异常")
+						.setPositiveButton("确定",
+								new DialogInterface.OnClickListener() {
+									@Override
+									public void onClick(DialogInterface dialog,
+											int whichButton) {
+										dialog.cancel();
+										mCurrentDownloadUrl = null;
+										mIsLoading = false;
+										downLoadDialogBuild= null ;
+										killMyself();
+									}
+								}).create().show();
+				SharedPreferencesManager.putBoolean(Config.SHARED_PREFERENCES_SET,Config.SHARED_PREFERENCES_DOWN_LODING,false);
+				SharedPreferencesManager.putString(Config.SHARED_PREFERENCES_SET,Config.SHARED_PREFERENCES_DOWN_NAME,"");
+
+				break;
+			case UPGRADE_PROGRESS:
+				downLoadDialogBuild.setProgress(currentSize);
+				String result = numberFormat.format((float) currentSize/ (float) fileSize);
+				downLoadDialogBuild.setMessage("下载中" + result);
+				break;
+			case START_UPGRADE:
+				downLoadDialogBuild.setMaxProgress(fileSize);
+				SharedPreferencesManager.putString(Config.SHARED_PREFERENCES_SET,Config.SHARED_PREFERENCES_DOWN_NAME,mCurrentDownloadUrl);
+				SharedPreferencesManager.putBoolean(Config.SHARED_PREFERENCES_SET,Config.SHARED_PREFERENCES_DOWN_LODING,true);
+				break;
+			default:
+				break;
+			}
+		}
+	};
+
+  public DownloadForTVD(Activity context) {
+    mActivity = context;
+    numberFormat.setMaximumFractionDigits(0);
+  }
+
+  
+	public synchronized void startToDownload(final String downLoadUrl,final String saveFilePath, final String apkName) {
+		
+		Lg.e("startToDownload--->downLoadUrl-->" + downLoadUrl+ "---saveFilePath-->" + saveFilePath + "--apkName-->"+ apkName);
+		
+		boolean mWholeLoding=SharedPreferencesManager.getBoolean(Config.SHARED_PREFERENCES_SET,Config.SHARED_PREFERENCES_DOWN_LODING,false);
+		String mWholeDownUrl=SharedPreferencesManager.getString(Config.SHARED_PREFERENCES_SET,Config.SHARED_PREFERENCES_DOWN_NAME,"");	
+		
+		Lg.e("startToDownload---> is downloading?--->mWholeDownUrl-->" + mWholeDownUrl+ "---mWholeLoding-->" + mWholeLoding);
+		
+		if(!TextUtils.isEmpty(mWholeDownUrl)){
+			if(mWholeLoding && mWholeDownUrl.equals(downLoadUrl)){
+			 Toast.makeText(mActivity, "已经开始下载apk...", Toast.LENGTH_LONG).show();	
+			 return;
+			}
+		}
+		
+		if (!TextUtils.isEmpty(mCurrentDownloadUrl)) {
+		      if (mCurrentDownloadUrl.equals(downLoadUrl) && mIsLoading) {
+		        Toast.makeText(mActivity, "已经开始下载apk...", Toast.LENGTH_LONG).show();
+		        return;
+		      } else if (!mCurrentDownloadUrl.equals(downLoadUrl) && mIsLoading) {
+		        Toast.makeText(mActivity, "正在下载其他apk,稍后重试", Toast.LENGTH_LONG).show();
+		        return;
+		      }
+		    }
+		  
+		this.saveFilePath = saveFilePath;
+		this.apkName = apkName;
+		mCurrentDownloadUrl = downLoadUrl;
+		initProgressDialog();
+		apkLoader = new ApkDownloader(downLoadUrl, saveFilePath, apkName,
+				new FileDownLoaderListener() {
+					@Override
+					public void onFileDownLoadProgress(int size) {
+						Lg.d("DownloadForTVD , startDownload()#onFileDownLoadProgress , size = "+ size);
+						currentSize = size / 1024;
+						handler.sendEmptyMessage(UPGRADE_PROGRESS);
+					}
+
+					@Override
+					public void onFileDownLoadError(String msg) {
+						Lg.e("DownloadForTVD , startDownload()#onFileDownLoadError , msg = "
+								+ msg);
+						Message message = Message.obtain();
+						message.what = ERROR_UPGRADE;
+						message.obj = msg;
+						handler.sendMessage(message);
+					}
+
+					@SuppressLint("NewApi")
+					@Override
+					public void onFileDownLoadEnd() {
+						Lg.e("DownloadForTVD , startDownload()#onFileDownLoadEnd");
+						File apkFile = new File(saveFilePath + "/" + apkName);
+						apkFile.setReadable(true, false);
+						handler.sendEmptyMessage(END_UPGRADE);
+					}
+
+					@Override
+					public void onFileDownLoadBegin(int size) {
+						Lg.e("DownloadForTVD , startDownload()#onFileDownLoadBegin , fileSize = "+ fileSize);
+						mIsLoading = true;
+						fileSize = size / 1024;
+						handler.sendEmptyMessage(START_UPGRADE);
+					}
+				});
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					
+					apkLoader.download();
+
+				} catch (Exception e) {
+					Message message = Message.obtain();
+					message.what = ERROR_UPGRADE;
+					message.obj = mActivity.getResources().getString(
+							R.string.server_conn_error);
+					handler.sendMessage(message);
+					e.printStackTrace();
+				}
+			}
+		}).start();
+	}
+
+  /**
+   * 初始化进度条弹窗
+   */
+  private void initProgressDialog() {
+    if (downLoadDialogBuild == null) {
+    	if(mActivity==null){
+    		   Lg.e("DownloadForTVD,"+ "#initProgressDialog--->mActivity is null");
+    	}
+      downLoadDialogBuild = new DownLoadDialog.Builder(mActivity);
+      downLoadDialogBuild.setCancelable(false);
+      downLoadDialogBuild.setNegativeButtonClickListener(new OnClickListener() {
+
+        @Override
+        public void onClick(DialogInterface dialog, int which) {
+          // TODO 取消下载
+          dialog.cancel();
+          Lg.e("DownloadForTVD,"+ "#apkLoader.stopFileDownLoader()");
+          apkLoader.stopFileDownLoader();
+          mCurrentDownloadUrl=null;
+          mIsLoading=false;
+          SharedPreferencesManager.putBoolean(Config.SHARED_PREFERENCES_SET,Config.SHARED_PREFERENCES_DOWN_LODING,false);
+		  SharedPreferencesManager.putString(Config.SHARED_PREFERENCES_SET,Config.SHARED_PREFERENCES_DOWN_NAME,"");
+        }
+      });
+      downLoadDialogBuild.setPositiveButtonClickListener(new OnClickListener() {
+        @Override
+        public void onClick(DialogInterface dialog, int which) {
+          // TODO 后台下载
+          dialog.cancel();
+
+        }
+      });
+      downloadProgressDialog = downLoadDialogBuild.create();
+      downloadProgressDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
+      Lg.e("DownloadForTVD,"+ "#initProgressDialog--->downloadProgressDialog show");
+    }
+    
+    Lg.e("DownloadForTVD,"+ "#initProgressDialog--->downloadProgressDialog create");
+    downloadProgressDialog.show();
+  }
+
+  
+  private void installApp() {
+	    Lg.d("DownloadForTVD--->#installApp-->saveFilePath-->" + saveFilePath + "--apkName-->"+ apkName);
+	    File dir = new File(saveFilePath, apkName);
+	    if (!dir.exists()) {
+	      Toast.makeText(mActivity.getApplicationContext(), "找不到安装文件", Toast.LENGTH_LONG).show();
+	      return;
+	    }
+	    UpgradeManager.GetInstance().install(mActivity.getApplicationContext(), dir);
+
+	  }
+
+  private void killMyself() {
+    // AuthManager.GetInstance().exitAuth();
+    // ProxyManager.GetInstance().exitProxy();
+    // android.os.Process.killProcess(android.os.Process.myPid());
+  }
+}

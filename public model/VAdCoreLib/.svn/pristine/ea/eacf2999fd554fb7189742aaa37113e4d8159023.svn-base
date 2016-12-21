@@ -1,0 +1,451 @@
+package com.vad.sdk.core.model.v30;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import android.app.AlertDialog;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
+import android.text.TextUtils;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.ImageView;
+import android.widget.RelativeLayout;
+import android.widget.RelativeLayout.LayoutParams;
+
+import com.vad.sdk.core.Utils.v30.DeviceUtil;
+import com.vad.sdk.core.Utils.v30.DisplayManagers;
+import com.vad.sdk.core.Utils.v30.Lg;
+import com.vad.sdk.core.base.AdPos;
+import com.vad.sdk.core.base.MediaInfo;
+import com.vad.sdk.core.report.v30.ReportManager;
+import com.vad.sdk.core.view.v30.AdWebView;
+import com.vad.sdk.core.view.v30.CustomMarqueeView;
+import com.vad.sdk.core.view.v30.DownloadAPkManager;
+import com.vad.sdk.core.view.v30.JavaScriptInterface.ExitListener;
+import com.vad.sdk.core.view.v30.SudokuView;
+import com.vad.sdk.core.view.v30.SudokuView.TimerText;
+import com.voole.android.client.UpAndAu.util.MD5Util;
+
+/**
+ * 播放中浮层广告
+ *
+ * 1.与暂停广告互斥<br>
+ * 2.与中贴片非互斥<br>
+ * 3.多个浮层有重叠的情况下如何处理??<br>
+ * 优先显示最新的浮层<br>
+ * 4.在播放中浮层广告展示时,按back,广告消失<br>
+ */
+public class AdPosTVDListener extends AdPosBaseListener {
+  class Image {
+    boolean mHasReportStart;
+    boolean mHasReportStop;
+    int width;
+    int height;
+    int r;
+    int a;
+    String webURl;
+    String url;
+    MediaInfo mediaInfo;
+
+    public Image(int w, int h, int r, String urlTmp, int a, String webUrl, MediaInfo media) {
+      mHasReportStart = false;
+      mHasReportStop = false;
+      width = w;
+      height = h;
+      this.r = r;
+      this.a = a;
+      webURl = webUrl;
+      url = urlTmp;
+      mediaInfo = media;
+    }
+
+    @Override
+    public String toString() {
+      return "<width=" + width + ",height=" + height + ",r=" + r + ",a=" + a + ",webURl=" + webURl + ",url=" + url + ",mediaInfo=" + mediaInfo + ">";
+    }
+  }
+
+  private int mAdPosition;
+  private Map<Integer, Object> hashmap;
+  private int mTVCAdAllLength = 0;
+
+  private ImageView imageview;
+  private byte[] picByte;
+  private AlertDialog dialog;
+  private boolean isView = false;
+  private SudokuView sudokuView;
+  private int mRealtime;// 正片的时间
+  private AdWebView webView;
+  private int lengthTime = -1;
+  private boolean isTextView;
+  private CustomMarqueeView mCustomMarqueeView;
+  private RelativeLayout relativeLayout;
+  private DownloadAPkManager mAPkManager;
+  private ReportManager mReportManager;
+  private Thread thread;
+  private Image mCurrentImage;
+  private Handler handler = new Handler(Looper.getMainLooper()) {
+    @Override
+    public void handleMessage(Message msg) {
+      super.handleMessage(msg);
+      if (msg.what == 1) {
+        if (picByte != null) {
+          Bitmap bitmap = BitmapFactory.decodeByteArray(picByte, 0, picByte.length);
+          imageview.setImageBitmap(bitmap);
+          thread = null;
+          bitmap = null;
+        }
+      }
+    }
+  };
+
+  public AdPosTVDListener(int positionTmp) {
+    super();
+    mAdPosition = positionTmp;
+    hashmap = new HashMap<Integer, Object>();
+  }
+
+  @Override
+  public void setData(AdPos adpos) {
+    Lg.e("AdPosTVDListener , setData()");
+    mReportManager = ReportManager.getInstance();
+    for (MediaInfo mediaInfo : adpos.mediaInfoList) {
+      if (!"3".equals(mediaInfo.getViewtype())) {
+        int w = Integer.valueOf(!TextUtils.isEmpty(mediaInfo.getWidth()) ? mediaInfo.getWidth() : "200");
+        int h = Integer.valueOf(!TextUtils.isEmpty(mediaInfo.getHeight()) ? mediaInfo.getHeight() : "200");
+        int position = Integer.valueOf(!TextUtils.isEmpty(mediaInfo.getMediapos()) ? mediaInfo.getMediapos() : "9");
+        int startTime = Integer.valueOf(TextUtils.isEmpty(mediaInfo.getStarttime()) ? "0" : mediaInfo.getStarttime());
+        if (!hashmap.containsKey(startTime)) {
+          hashmap.put(startTime, new Image(w, h, -1, mediaInfo.getSource(), position, mediaInfo.getUrl(), mediaInfo));
+        }
+      } else if ("3".equals(mediaInfo.getViewtype())) {// =3,文字
+        int position = Integer.valueOf("0".equals(mediaInfo.getMediapos()) ? mediaInfo.getMediapos() : "9");
+        int startTime = Integer.valueOf(TextUtils.isEmpty(mediaInfo.getStarttime()) ? "0" : mediaInfo.getStarttime());
+        if (!hashmap.containsKey(startTime)) {
+          hashmap.put(startTime, new Image(0, 0, -1, mediaInfo.getSource(), position, mediaInfo.getUrl(), mediaInfo));
+        }
+      }
+    }
+    super.setData(adpos);
+  }
+
+  public boolean start(int mpCurrentPosition) {
+    Lg.e("AdPosTVDListener , start() , mpCurrentPosition = " + mpCurrentPosition);
+    if (hashmap.get(mpCurrentPosition - mTVCAdAllLength) != null) {
+      if (mpCurrentPosition != -1) {
+        mRealtime = mpCurrentPosition - mTVCAdAllLength;
+      } else {
+        mRealtime = -1;
+      }
+      if (sudokuView != null || isTextView) {
+        stop();
+      }
+      mCurrentImage = (Image) hashmap.get(mRealtime);
+      mAdPosStatusListener.onAdStart();
+      if (!mCurrentImage.mHasReportStart) {
+        Lg.e("片中场景广告--开始--汇报");
+        mReportManager.report(mCurrentImage.mediaInfo.getReportvalue(), 0, ReportManager.Start, mReportUrl, mAdPos.id.substring(0, 2));
+//        mCurrentImage.mHasReportStart = true;
+      } else {
+        Lg.e("片中场景广告--开始--已经汇报过,不在汇报");
+      }
+
+      final int itemtime = Integer.valueOf(TextUtils.isEmpty(mCurrentImage.mediaInfo.getLength()) ? "5" : mCurrentImage.mediaInfo.getLength());
+      lengthTime = itemtime + mpCurrentPosition;
+      String viewType = mCurrentImage.mediaInfo.getViewtype();
+      Lg.e("AdPosTVDListener , start() , viewType = " + viewType);
+      if ("3".equals(viewType)) {// =3,文字
+        isView = true;
+        isTextView = true;
+        String text = mCurrentImage.mediaInfo.getSource();
+        if (text != null && mCustomMarqueeView == null && relativeLayout == null) {
+        	relativeLayout = new RelativeLayout(mViewGroup.getContext());
+        	LayoutParams Parames = (LayoutParams) new LayoutParams(LayoutParams.MATCH_PARENT, DisplayManagers.dip2px(mViewGroup.getContext(), 70));
+        	Parames.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+        	relativeLayout.setGravity(Gravity.RIGHT);
+        	relativeLayout.setBackgroundColor(Color.parseColor("#4b000000"));
+        	relativeLayout.setPadding(0, 0, 0, DisplayManagers.dip2px(mViewGroup.getContext(), 30));
+        	
+        	mCustomMarqueeView = new CustomMarqueeView(mViewGroup.getContext());
+        	LayoutParams layoutParames = (LayoutParams) new LayoutParams(LayoutParams.MATCH_PARENT,LayoutParams.MATCH_PARENT);
+            layoutParames.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+            mCustomMarqueeView.setText(text);
+            relativeLayout.addView(mCustomMarqueeView,layoutParames);
+            mViewGroup.addView(relativeLayout,Parames);
+            relativeLayout.setVisibility(View.INVISIBLE);
+        }
+        if (text != null) {
+        	mCustomMarqueeView.setText(text);
+        	mCustomMarqueeView.stopScroll();
+          relativeLayout.setVisibility(View.VISIBLE);
+          return true;
+        }
+        return false;
+      } else {
+        sudokuView = new SudokuView(mViewGroup.getContext(), mAdPosition == 10 ? mCurrentImage.width : 0, mAdPosition == 10 ? mCurrentImage.height : 0, mAdPosition == 10 ? mCurrentImage.a : mAdPosition,
+            false);
+
+        final String innerText = mCurrentImage.mediaInfo.getInnercontent();
+        final String source = mCurrentImage.mediaInfo.getSource();
+        String inurl = mCurrentImage.mediaInfo.getInnersource();
+        String Innernamepos = mCurrentImage.mediaInfo.getInnernamepos();
+        int n;
+        if (!TextUtils.isEmpty(mCurrentImage.mediaInfo.getInnermediapos())) {
+          n = Integer.valueOf(mCurrentImage.mediaInfo.getInnermediapos());
+        } else {
+          n = 9;
+        }
+        if (((Image) hashmap.get(mRealtime)).r == -1) {
+          sudokuView.setDataEmbedded(innerText, source, 0, n, inurl, Innernamepos, mCurrentImage.mediaInfo);
+        } else {
+          sudokuView.setDataEmbedded(innerText, mAdPosition == 10 ? String.valueOf(mCurrentImage.r) : source, 0, n, inurl, Innernamepos, mCurrentImage.mediaInfo);
+        }
+        sudokuView.setOnTimerTextListener(new TimerText() {
+
+          @Override
+          public void RemoverView() {
+            stop();
+          }
+
+          @Override
+          public void getCurrentTime(int currentTime) {
+
+          };
+        });
+        mViewGroup.addView(sudokuView);
+        isView = true;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public boolean notice(int Currenttime) {
+    Lg.d("AdPosTVDListener , notice() , Currenttime = " + Currenttime);
+    if (isView && lengthTime != -1 && lengthTime <= Currenttime) {
+      return stop();
+    }
+    return true;
+  }
+
+  public boolean stop() {
+    if (isView) {
+      Lg.d("AdPosTVDListener , stop()");
+      isView = false;
+      if (picByte != null || thread != null) {
+        picByte = null;
+        thread = null;
+      }
+      if (sudokuView != null) {
+        sudokuView.StopTask();
+        mViewGroup.removeView(sudokuView);
+        sudokuView = null;
+      }
+      if (webView != null) {
+        mViewGroup.removeView(webView);
+        sudokuView = null;
+      }
+      if (relativeLayout != null && relativeLayout.getVisibility() == View.VISIBLE && isTextView) {
+        isTextView = false;
+        mCustomMarqueeView.stopScroll();
+        relativeLayout.setVisibility(View.INVISIBLE);
+        mViewGroup.removeView(relativeLayout);
+        relativeLayout=null;
+        mCustomMarqueeView=null;
+      }
+      if (!mCurrentImage.mHasReportStop) {
+        Lg.e("片中场景广告--结束--汇报");
+//        mReportManager.report(mCurrentImage.mediaInfo.getReportvalue(), 0, ReportManager.Stop, mReportUrl, mAdPos.id.substring(0, 2));
+//        mCurrentImage.mHasReportStop = true;
+      } else {
+//        Lg.e("片中场景广告--结束--已经汇报过,不在汇报");
+      }
+      mAdPosStatusListener.onAdEnd();
+      return false;
+    }
+    return true;
+  }
+
+  public boolean reset() {
+    if (isView) {
+      if (picByte != null || thread != null) {
+        picByte = null;
+        thread = null;
+      }
+      isView = false;
+      sudokuView.StopTask();
+      mViewGroup.removeView(sudokuView);
+      if (webView != null) {
+        mViewGroup.removeView(webView);
+      }
+      sudokuView = null;
+      return false;
+    }
+    return true;
+  }
+
+  public void open() {
+    Lg.e("AdPosTVDLiveListener , open()");
+    if (isView && (Image) hashmap.get(mRealtime) != null) {
+      String skipType = ((Image) hashmap.get(mRealtime)).mediaInfo.getSkiptype();
+      Lg.e("AdPosTVDLiveListener , open() , skipType = " + skipType);
+      if ("1".equals(skipType)) {// =1,图片
+        if (picByte != null || thread != null) {
+          picByte = null;
+          thread = null;
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(mViewGroup.getContext());
+        dialog = builder.create();
+        dialog.show();
+        DisplayManagers.getInstance().init(mViewGroup.getContext());
+        int width = (int) (DisplayManagers.getInstance().getScreenWidth() * 0.3);
+        // int height = (int) (DisplayManagers.GetInstance().getScreenHeight() * 0.6);
+        Lg.e("handlerMediaInfoSkip() , width = " + width);
+        dialog.getWindow().setLayout(width, width);
+        imageview = new ImageView(mViewGroup.getContext());
+        LayoutParams imageParams = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        imageview.setLayoutParams(imageParams);
+        dialog.setContentView(imageview);
+        Runnable runnable = new Runnable() {
+          @Override
+          public void run() {
+            try {
+              String uri = ((Image) hashmap.get(mRealtime)).webURl;
+              URL url = new URL(uri);
+              HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+              conn.setRequestMethod("GET");
+              conn.setReadTimeout(10000);
+
+              if (conn.getResponseCode() == 200) {
+                InputStream fis = conn.getInputStream();
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                byte[] bytes = new byte[1024];
+                int length = -1;
+                while ((length = fis.read(bytes)) != -1) {
+                  bos.write(bytes, 0, length);
+                }
+                picByte = bos.toByteArray();
+                bos.close();
+                fis.close();
+
+                Message message = new Message();
+                message.what = 1;
+                handler.sendMessage(message);
+              }
+
+            } catch (IOException e) {
+              e.printStackTrace();
+            }
+          }
+        };
+        thread = new Thread(runnable);
+        thread.start();
+      } else if ("2".equals(skipType)) {// 跳转网页
+        AlertDialog.Builder builder = new AlertDialog.Builder(mViewGroup.getContext());
+        final AlertDialog mWebDialog = builder.create();
+        mWebDialog.show();
+        mWebDialog.getWindow().setLayout(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+        LayoutParams lp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+        // FIXME(ljs) Android WebView Memory Leak
+        // WebView内存泄漏http://my.oschina.net/zhibuji/blog/100580
+        AdWebView adWebView = new AdWebView(mViewGroup.getContext(), lp);
+        adWebView.setJsExitListener(new ExitListener() {
+          @Override
+          public void onExit() {
+            mWebDialog.cancel();
+          }
+        });
+        mWebDialog.setContentView(adWebView);
+        String url = ((Image) hashmap.get(mRealtime)).webURl;
+        Lg.e("AdPosTVDLiveListener , open() , skip WebView  url = " + url);
+        if (url != null) {
+          if (!url.contains("http://") && !url.contains("https://")) {
+            url = "http://" + url;
+            Lg.e("AdPosTVDLiveListener , open() , skip WebView  url = " + url);
+          }
+        }
+        // if (((Image) hashmap.get(mRealtime)).webURl.length() > 4 && "http".equals(((Image)
+        // hashmap.get(mRealtime)).webURl.subSequence(0, 4))) {
+        // adWebView.loadUrl(((Image) hashmap.get(mRealtime)).webURl);
+        // } else {
+        // adWebView.loadUrl("http://" + ((Image) hashmap.get(mRealtime)).webURl);
+        // }
+        // adWebView.loadUrl(((Image) hashmap.get(mRealtime)).webURl);
+        adWebView.loadUrl(url);
+        // adWebView.setVisibility(View.VISIBLE);
+      } else if ("3".equals(skipType)) {// 跳转apk页面或者下载apk
+        final String Package = ((Image) hashmap.get(mRealtime)).mediaInfo.getPkgname();
+        final String url = ((Image) hashmap.get(mRealtime)).mediaInfo.getUrl();
+        String fileName = "";
+        if (url != null) {
+          fileName = MD5Util.getMD5String(url).substring(8, 24) + ".apk";
+        }
+        final String appName = ((Image) hashmap.get(mRealtime)).mediaInfo.getName();
+        // String[] split = null;
+        // if (!TextUtils.isEmpty(((Image) hashmap.get(time)).mediaInfo
+        // .getApkinfo())) {
+        // String Split = ((Image) hashmap.get(time)).mediaInfo
+        // .getApkinfo();
+        // int i = Split.indexOf("{\"");
+        // int j = Split.indexOf("\"}");
+        // Split = Split.substring(i + 2, j);
+        // split = Split.split("\":\"");
+        // }
+        boolean isInstall = DeviceUtil.checkPackageExist(mViewGroup.getContext(), Package);
+        if (isInstall) {
+          Intent intent = new Intent();
+          if (!TextUtils.isEmpty(((Image) hashmap.get(mRealtime)).mediaInfo.getAction())) {
+            intent.setAction(((Image) hashmap.get(mRealtime)).mediaInfo.getAction());
+          } else {
+            intent = mViewGroup.getContext().getPackageManager().getLaunchIntentForPackage(Package);
+          }
+          /*
+           * if (split != null && split.length > 0) { intent.putExtra(split[0], split[1]); }
+           */
+          try {
+            JSONObject jsonObject = new JSONObject(((Image) hashmap.get(mRealtime)).mediaInfo.getApkinfo());
+            String intentMid = jsonObject.getString("intentMid");
+            intent.putExtra("intentMid", intentMid);
+            String fromApp = jsonObject.getString("fromApp");
+            intent.putExtra("fromApp", fromApp);
+          } catch (JSONException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+          }
+          mViewGroup.getContext().startActivity(intent);
+        } else {
+          // DownDialog downDialog = new DownDialog(mViewGroup.getContext(), url, fileName,
+          // appName);
+          // downDialog.start();
+          if (mAPkManager == null) {
+            mAPkManager = new DownloadAPkManager(mViewGroup.getContext(), fileName, appName);
+          }
+          mAPkManager.startDownload(url);
+        }
+      }
+      if ("1".equals(skipType) || "2".equals(skipType) || "3".equals(skipType)) {
+        Lg.d("播放中浮层配了二级跳转,需要汇报,go to report");
+        ReportManager.getInstance().report(((Image) hashmap.get(mRealtime)).mediaInfo.getReportvalue(), 1, ReportManager.Start, mReportUrl, mAdPos.id.substring(0, 2));
+      }
+    }
+  }
+
+  public void setTime(int tvcAdTotallength) {
+    mTVCAdAllLength = tvcAdTotallength;
+  }
+}

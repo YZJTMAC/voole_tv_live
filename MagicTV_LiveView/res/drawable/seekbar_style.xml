@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android" >
+
+    <item android:id="@android:id/background">
+        <nine-patch android:src="@drawable/seek_bg" />
+    </item>
+    <item android:id="@android:id/progress">
+        <clip>
+            <nine-patch android:src="@drawable/cs_back_seeked" />
+        </clip>
+    </item>
+ <!--
+    <item android:id="@android:id/background">
+        <shape>
+            <corners android:radius="0dip" />
+            <gradient
+                    android:startColor="#ffffff"
+                    android:centerColor="#ffffff"
+                    android:centerY="1"
+                    android:endColor="#ffffff"
+                    android:angle="0"
+            />
+        </shape>
+    </item>
+    
+    <item android:id="@android:id/secondaryProgress">
+        <clip>
+            <shape>
+                <corners android:radius="0dip" />
+                <gradient
+                        android:startColor="#80ffd300"
+                        android:centerColor="#80ffb600"
+                        android:centerY="0.75"
+                        android:endColor="#a0ffcb00"
+                        android:angle="0"
+                />
+            </shape>
+        </clip>
+    </item>
+    
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape>
+                <corners android:radius="0dip" />
+                <gradient
+                        android:startColor="#69BDFD"
+                        android:centerColor="#69BDFD"
+                        android:centerY="1"
+                        android:endColor="#69BDFD"
+                        android:angle="0"
+                />
+            </shape>
+        </clip>
+    </item>
+
+
+    -->
+    
+</layer-list>

@@ -1,0 +1,545 @@
+package com.vad.sdk.core;
+
+import java.util.List;
+
+import android.content.Context;
+import android.util.Log;
+import android.view.ViewGroup;
+
+import com.facebook.common.logging.FLog;
+import com.facebook.drawee.backends.pipeline.Fresco;
+import com.vad.sdk.core.Utils.v30.DisplayManagers;
+import com.vad.sdk.core.Utils.v30.Lg;
+import com.vad.sdk.core.Utils.v30.Utils;
+import com.vad.sdk.core.base.AdPos;
+import com.vad.sdk.core.base.MediaInfo;
+import com.vad.sdk.core.base.interfaces.IAdController;
+import com.vad.sdk.core.base.interfaces.IAdEpgOperationHandler;
+import com.vad.sdk.core.base.interfaces.IAdHomeEpgOperationHandler;
+import com.vad.sdk.core.base.interfaces.IAdPlayer;
+import com.vad.sdk.core.base.interfaces.IAdPlayerUIController;
+import com.vad.sdk.core.base.interfaces.IAdStartupListener;
+import com.vad.sdk.core.manager.CrashHandler;
+import com.vad.sdk.core.manager.EventCenterManager;
+import com.vad.sdk.core.manager.SharedPreferencesManager;
+import com.vad.sdk.core.report.v30.ReportManager;
+import com.vad.sdk.core.view.v30.ExitAdView.OnItemClickListener;
+
+/**
+ * sdk
+ *
+ * @author luojunsheng
+ * @date 2016年2月22日 下午3:24:24
+ * @version 1.1
+ */
+public class VAdSDK {
+  private static VAdSDK sInstance;
+  private IAdController mAdController;
+  /**
+   * 修改注册地址请求端口号
+   */
+  private String mAuthPort = "18080";
+  private boolean mDoubleExit;
+
+  private VAdSDK() {
+
+  }
+
+  // FIXME(ljs):http://www.cs.umd.edu/~pugh/java/memoryModel/DoubleCheckedLocking.html
+  public static VAdSDK getInstance() {
+    if (sInstance == null) {
+      synchronized (VAdSDK.class) {
+        if (sInstance == null) {
+          sInstance = new VAdSDK();
+        }
+      }
+    }
+    return sInstance;
+  }
+
+  /**
+   * 在自定义的 Application 中做初始化操作
+   *
+   * @param context
+   */
+  public void init(Context context) {
+    Lg.d("VAdSDK , init()");
+    Lg.e("VAdSDK internal_version_name = " + Utils.getInternalVersionName());
+    if (!Utils.isMainProcess(context)) {
+      Lg.e("There is no need to initialize VAdSDK in the case of multiple processes!!!!");
+      return;
+    }
+    EventCenterManager.initEventCenterManager(context);
+    // ReportManager.getInstance().init(context);
+    DisplayManagers.getInstance().init(context);
+    SharedPreferencesManager.createInstance(context);
+    SharedPreferencesManager.putString(Config.SHARED_PREFERENCES_SET, Config.SHARED_PREFERENCES_SDK_VERSION_CODE, Config.SDK_VERSION_CODE);
+    Fresco.initialize(context, ConfigConstants.getImagePipelineConfig(context));
+    FLog.setMinimumLoggingLevel(FLog.VERBOSE);
+    if (mAdController == null) {
+      mAdController = VAdControllerFactory.getAdController();
+    }
+  }
+
+  public void init(Context context, boolean isHandleCrash) {
+    if (isHandleCrash) {
+      CrashHandler.getInstance().init();
+    }
+    init(context);
+  }
+
+  public void setAuthPort(String authPort) {
+    Lg.d("VAdSDK , setAuthPort() , authPort = " + authPort);
+    mAuthPort = authPort;
+  }
+
+  /**
+   * 注册地址端口号
+   *
+   * @return String类型，端口号
+   */
+  public String getAuthPort() {
+    return mAuthPort;
+  }
+
+  public boolean isDoubleExit() {
+    return mDoubleExit;
+  }
+
+  public void setDoubleExit(boolean isDoubleExit) {
+    mDoubleExit = isDoubleExit;
+  }
+
+  /**
+   * 注册ApkID
+   *
+   * @param apkId
+   *          有auth则用id请求，无则用填http
+   * @param tryCount
+   *          注册失败重试次数,默认3次
+   * @return
+   */
+  public boolean register(String apkId, int tryCount) {
+    Lg.e("VAdSDK , register() , apkId = " + apkId + " , tryCount = " + tryCount);
+    if (tryCount < 1) {
+      tryCount = 3;// 默认3次
+    }
+    boolean isSuccess = false;
+    int count = 0;
+    while (!isSuccess && count < tryCount) {
+      if (mAdController != null) {
+        isSuccess = mAdController.register(apkId);
+      }
+      count++;
+    }
+    Lg.e("VAdSDK , register() , isSuccess = " + isSuccess + " , count = " + count);
+    return isSuccess;
+  }
+
+  /**
+   * 注册ApkID
+   *
+   * @param apkId
+   *          有auth则用id请求，无则用填http
+   * @param tryCount
+   *          注册失败重试次数,默认3次
+   * @return
+   */
+  public boolean register(String apkId) {
+    return register(apkId, -1);
+  }
+
+  /**
+   *
+   * @param apkId
+   *          有auth则用id请求，无则用填http
+   * @param defaultadinf
+   *          替换的广告投放域名
+   * @param defaultreporturl
+   *          替换的广告汇报域名
+   * @return 黑龙江广电用
+   */
+  public boolean register(String apkId, String defaultadinf, String defaultreporturl) {
+    if (mAdController != null) {
+      return mAdController.register(apkId, defaultadinf, defaultreporturl);
+    }
+    return false;
+  }
+
+  /**
+   * 获取广告信息
+   *
+   * @param posId
+   *          广告位id
+   * @param mid
+   *          mid
+   * @param fid
+   *          影片id
+   * @param channelCode
+   *          渠道Id
+   * @param type
+   *          类型
+   * @return
+   */
+  public List<AdPos> getAdInfos(String posId, String mid, String fid, String channelCode, String type, String cattype) {
+    if (mAdController != null) {
+      List<AdPos> adInfos = mAdController.getAdInfos(posId, mid, fid, channelCode, type, cattype);
+      if (adInfos != null && adInfos.size() > 0) {
+        for (AdPos adPos : adInfos) {
+          Log.e("xx", "adPos = " + adPos);
+          if (adPos.reportUrl != null) {
+            String reportUrl = adPos.reportUrl;
+            MediaInfo mediaInfo = adPos.mediaInfoList.get(0);
+            String reportvalue = null == mediaInfo ? "" : mediaInfo.getReportvalue();
+            // NOTE(ljs):在广告位没有广告时也上报
+            report(reportvalue, 0, ReportManager.Start, reportUrl, adPos.id);
+          }
+        }
+      }
+      return adInfos;
+    }
+    return null;
+  }
+
+  public List<AdPos> getAdInfos(String posId, String mid, String fid, String channelCode, String mtype) {
+    return getAdInfos(posId, mid, fid, channelCode, mtype, null);
+  }
+
+  public List<AdPos> getAdLiveInfos(String posId, String mid, String fid, String channelCode, String type, String cattype) {
+    Lg.d("VAdSDK , getAdLiveInfos() , channelCode = " + channelCode);
+    if (mAdController != null) {
+      List<AdPos> adInfos = mAdController.getAdInfos(posId, mid, fid, channelCode, type, cattype);
+      return adInfos;
+    }
+    return null;
+  }
+
+  /**
+   * 点播专题-单个专题背景广告广告
+   *
+   * @param mid
+   * @param fid
+   * @param channelCode
+   * @param mtype
+   * @param cattype
+   * @return
+   */
+  public List<AdPos> getAdTopicInfo(String mid, String fid, String channelCode, String mtype, String cattype) {
+    Lg.d("VAdSDK , getAdTopicInfo() , channelCode = " + channelCode);
+    return getAdInfos(VAdType.AD_EPG_D_TOPIC, mid, fid, channelCode, mtype, cattype);
+  }
+
+  /**
+   * 获取广告数据
+   *
+   * @param rawData
+   *          本地解析的广告xml数据
+   * @return
+   */
+  public List<AdPos> getAdInfos(String rawData) {
+    if (mAdController != null) {
+      return mAdController.getAdInfos(rawData);
+    }
+    return null;
+  }
+
+  /**
+   * 处理点播广告事件
+   *
+   * @param context
+   * @param mediaInfo
+   *          当前广告
+   */
+  public void dealEpgExitAd(Context context, MediaInfo mediaInfo) {
+    Lg.d("VAdSDK , dealEpgExitAd()");
+    if (mAdController != null) {
+      mAdController.open(mediaInfo, context, VAdType.AD_EPG_APK_EXIT);
+    }
+  }
+
+  /**
+   * 处理广告事件
+   *
+   * @param mediaInfo
+   *          广告数据
+   * @param context
+   * @param AdPosid
+   *          广告位ID
+   */
+  public void dealAd(MediaInfo mediaInfo, Context context, String AdPosid) {
+    Lg.d("VAdSDK , dealAd()");
+    if (mAdController != null) {
+      mAdController.open(mediaInfo, context, AdPosid);
+    }
+  }
+
+  /**
+   * 汇报
+   *
+   * @param Reportvalue
+   */
+  public void report(final String Reportvalue, final int uv, final String type, final String mReportUrl, final String posid) {
+    ReportManager reportManager = ReportManager.getInstance();
+    reportManager.report(Reportvalue, uv, type, mReportUrl, posid);
+  }
+
+  /**
+   * 弹出广告位
+   *
+   * @param id
+   *          广告位Id
+   * @param parent
+   *          在partent弹出广告位
+   * @param mid
+   *          更具自己情况看是否需要传
+   * @param fid
+   *          更具自己情况看是否需要传
+   * @param channelCode
+   *          更具自己情况看是否需要传
+   * @param mtype
+   *          更具自己情况看是否需要传
+   */
+  private void showAd(String posId, ViewGroup parent, String mid, String fid, String channelCode, String mtype, OnItemClickListener listener) {
+    if (mAdController != null) {
+      mAdController.showAd(posId, parent.getContext(), parent, mid, fid, channelCode, mtype, listener);
+    }
+  }
+
+  /**
+   * 展示开机apk广告
+   *
+   * @param posId
+   *          广告ID
+   * @param parent
+   *          需要展示广告的控件
+   * @param listener
+   *          结束回调
+   * @param isShowTime
+   *          是否显示倒计时
+   * @return
+   */
+  public boolean showApkStartAd(ViewGroup parent, IAdStartupListener listener, boolean isShowTime) {
+    Lg.e("VAdSDK , showApkStartAd()");
+    if (mAdController != null) {
+      return mAdController.showApkStartAd(parent, listener, isShowTime);
+    }
+    return false;
+  }
+
+  /**
+   * @see #showApkStartAd(ViewGroup parent, IAdStartupListener listener, boolean isShowTime)
+   * @deprecated
+   */
+  @Deprecated
+  public boolean showApkStartAd(ViewGroup parent, IAdStartupListener listener) {
+    return showApkStartAd(parent, listener, false);
+  }
+
+  /**
+   * 更新apk开启广告数据<br>
+   *
+   * 注意:<br>
+   * 1.更新数据是耗时操作,不能再UI线程<br>
+   * 2.在使用时先#show()保证上一次广告介质的正常展示<br>
+   * 3.更新广告前必须保证已经注册成功
+   *
+   * @param context
+   * @param posId
+   */
+  public void updateApkStartAd(Context context) {
+    Lg.e("VAdSDK , updateApkStartAd()");
+    if (mAdController != null) {
+      mAdController.updateApkStartAd(context);
+    }
+  }
+
+  /*
+   * public void showEpgAd(ViewGroup parent, String mid, String fid, String channelCode,String
+   * mtype){ showAd(VAdType.AD_EPG_D_MOVIE, parent, mid, fid, channelCode, mtype); }
+   */
+
+  /**
+   * 展示退出推荐广告[直播]
+   *
+   * 1.按键使用说明:直播过程中按返回则出现退出位推荐;再次按返回键退出退出位推荐，返回直播频道.<br>
+   * 2.该位置有排期后,每次退出APK即显示推荐类容，推荐内容按排期倒叙排列,有多少显示多少(一页最多显示4个,可以翻页);<br>
+   * 3.默认焦点在退出按钮上,可上下移动焦点;<br>
+   * 4.如果只有一个推荐,显示示例图中最左方的（建议至少配4个推荐）;<br>
+   * 5.可配置二级跳转,网页、打开APK(首次为下载,之后即为打开)、生成动态二维码、片单(含应用下载,打开到详情页);<br>
+   * 6.需统计各位置曝光数据及广告位点击数据;<br>
+   * 7.无论是否投放广告,有APK退出行为则上报库存数据;<br>
+   */
+  public void showExitAd(ViewGroup parent, String mid, String fid, String channelCode, String mtype, OnItemClickListener listener) {
+    Lg.d("VAdSDK , showExitAd()");
+    showAd(VAdType.AD_EPG_Z_EXIT, parent, mid, fid, channelCode, mtype, listener);
+  }
+
+  public void showExitAd(ViewGroup parent, String mid, String fid, String channelCode, String mtype) {
+    Lg.d("VAdSDK , showExitAd()");
+    showAd(VAdType.AD_EPG_Z_EXIT, parent, mid, fid, channelCode, mtype, null);
+  }
+
+  public void showTopicAd(ViewGroup parent, String mid, String fid, String channelCode, String mtype) {
+    Lg.d("VAdSDK , showTopicAd()");
+    showAd(VAdType.AD_EPG_D_TOPIC, parent, mid, fid, channelCode, mtype, null);
+  }
+
+  /**
+   * 展示大视野广告
+   *
+   * @param parent
+   * @param mid
+   * @param fid
+   * @param channelCode
+   * @param mtype
+   */
+  public void showDSYAd(ViewGroup parent, String mid, String fid, String channelCode, String mtype) {
+    Lg.d("VAdSDK , showDSYAd()");
+    showAd(VAdType.AD_DSY_1, parent, mid, fid, channelCode, mtype, null);
+  }
+
+  /**
+   * 获取点播apk退出广告位
+   */
+  public List<MediaInfo> synGetEpgApkExitAdInfos() {
+    return getApkExitAdInfos(VAdType.AD_EPG_APK_EXIT);
+  }
+
+  /**
+   * 获取直播apk退出广告位
+   */
+  public List<MediaInfo> synGetLiveApkExitAdInfos() {
+    return getApkExitAdInfos(VAdType.AD_EPG_Z_EXIT);
+  }
+
+  private List<MediaInfo> getApkExitAdInfos(String adposId) {
+    if (mAdController != null) {
+      return mAdController.getApkExitAdInfos(adposId);
+    }
+    return null;
+  }
+
+  /**
+   * 获得EPG浮层控制器
+   *
+   * @return 控制器
+   */
+  public IAdEpgOperationHandler getEpgOperationHandler() {
+    if (mAdController != null) {
+      return mAdController.getEpgOperationHandler();
+    }
+    return null;
+  }
+
+  public IAdHomeEpgOperationHandler getHomeEpgOperationHandler() {
+    if (mAdController != null) {
+      return mAdController.getHomeEpgOperationHandler();
+    }
+    return null;
+  }
+
+  /**
+   * 获得版本号
+   *
+   * @return 版本号
+   */
+  public String getAdVersion() {
+    if (mAdController != null) {
+      return mAdController.getAdVersion();
+    }
+    return null;
+  }
+
+  /**
+   * 获取点播时广告的请求地址
+   *
+   * @param mid
+   *          影片ID
+   * @param fid
+   *          介质ID
+   * @param channelCode
+   *          栏目ID
+   * @param mtype
+   *          影片类型
+   * @return
+   */
+  public String getEpgAdRequestUrl(String mid, String fid, String channelCode, String mtype) {
+    return getEpgAdRequestUrl(mid, fid, channelCode, mtype, true);
+  }
+
+  public String getEpgAdRequestUrl(String mid, String fid, String channelCode, String mtype, boolean isSupportTVC) {
+    Lg.e("VAdSDK , getEpgAdRequestUrl() , isSupportTVC = " + isSupportTVC);
+    if (mAdController != null) {
+      return mAdController.getPlayerAdUrl(IAdController.PLAY_TYPE_EPG, mid, fid, channelCode, mtype, isSupportTVC);
+    }
+    return null;
+  }
+
+  /**
+   * 获取直播时广告的请求地址
+   *
+   * @param mid
+   *          影片ID
+   * @param fid
+   *          介质ID
+   * @param channelCode
+   *          栏目ID
+   * @param mtype
+   *          影片类型
+   * @return
+   */
+  public String getLiveAdRequestUrl(String mid, String fid, String channelCode, String mtype) {
+    Lg.e("VAdSDK , getLiveAdRequestUrl()");
+    if (mAdController != null) {
+      return mAdController.getPlayerAdUrl(IAdController.PLAY_TYPE_LIVE, mid, fid, channelCode, mtype, true);
+    }
+    return null;
+  }
+
+  /**
+   * 初始点播广告
+   *
+   * @param context
+   * @param adPlayer
+   *          播放器
+   * @param adPlayerUIController
+   *          UI控制器
+   */
+  public void initEpgPlayerAd(Context context, IAdPlayer adPlayer, IAdPlayerUIController adPlayerUIController) {
+    Lg.e("VAdSDK , initEpgPlayerAd()");
+    if (mAdController != null) {
+      mAdController.initPlayerAd(IAdController.PLAY_TYPE_EPG, context, adPlayer, adPlayerUIController);
+    }
+  }
+
+  /**
+   * 直播广告
+   */
+  public void initLivePlayerAd(Context context, IAdPlayer adPlayer, IAdPlayerUIController adPlayerUIController) {
+    Lg.e("VAdSDK , initLivePlayerAd()");
+    if (mAdController != null) {
+      mAdController.initPlayerAd(IAdController.PLAY_TYPE_LIVE, context, adPlayer, adPlayerUIController);
+    }
+  }
+
+  /**
+   * 释放播发器广告
+   */
+  public void releasePlayerAd() {
+    Lg.e("VAdSDK , releasePlayerAd()");
+    if (mAdController != null) {
+      mAdController.releasePlayerAd();
+    }
+  }
+
+  /**
+   * 释放导流SDK
+   */
+  public void release() {
+    Lg.e("VAdSDK , release()");
+    if (mAdController != null) {
+      mAdController.release();
+      mAdController = null;
+    }
+  }
+}

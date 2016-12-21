@@ -1,0 +1,106 @@
+/**
+ *
+ */
+package com.vad.sdk.core.Utils.v30;
+
+import com.vad.sdk.core.Config;
+
+import android.content.Context;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager.NameNotFoundException;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.graphics.RectF;
+import android.graphics.drawable.ShapeDrawable;
+import android.graphics.drawable.shapes.RoundRectShape;
+
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
+
+/**
+ *
+ * @author luojunsheng
+ * @date 2016年4月13日 下午5:12:03
+ * @version 1.1
+ */
+public final class Utils {
+  /**
+   * 设置圆角
+   *
+   * @param color
+   *          背景色值
+   * @param radius
+   *          圆角大小
+   * @param insetWidth
+   *          设置圆角view的宽度
+   * @return
+   */
+  public static ShapeDrawable createRoundedRectDrawable(String color, float radius, float insetHeight) {
+    float[] outerRadii = new float[] { radius, radius, radius, radius, radius, radius, radius, radius };
+    float[] innerRadii = new float[] { radius, radius, radius, radius, radius, radius, radius, radius };
+    RectF inset = new RectF(insetHeight, insetHeight, insetHeight, insetHeight);
+    RoundRectShape roundRectShape = new RoundRectShape(outerRadii, inset, innerRadii);
+    ShapeDrawable shapeDrawable = new ShapeDrawable(roundRectShape);
+    shapeDrawable.getPaint().setColor(Color.parseColor(color));
+    return shapeDrawable;
+  }
+
+  public static Bitmap drawableToBitamp(Context context, int resId) {
+    BitmapFactory.Options options = new BitmapFactory.Options();
+    options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+    options.inPurgeable = true;
+    options.inInputShareable = true;
+    InputStream is = context.getResources().openRawResource(resId);
+    return BitmapFactory.decodeStream(is, null, options);
+  }
+
+  // 获取版本号
+  public static String getVersionName(Context context) {
+    try {
+      PackageInfo pi = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+      return pi.versionName;
+    } catch (NameNotFoundException e) {
+      e.printStackTrace();
+      return "";
+    }
+  }
+
+  /**
+   * 获取内部版本号
+   *
+   * @return
+   */
+  public static String getInternalVersionName() {
+    return Config.SDK_VERSION_CODE;
+  }
+
+  // 获取版本号(内部识别号)
+  public static int getVersionCode(Context context) {
+    try {
+      PackageInfo pi = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+      return pi.versionCode;
+    } catch (NameNotFoundException e) {
+      e.printStackTrace();
+      return 0;
+    }
+  }
+
+  public static boolean isValidUrl(String url) {
+    try {
+      new URL(url);
+      return true;
+    } catch (MalformedURLException e) {
+      return false;
+    }
+  }
+
+  // second 秒
+  public static String secondToString(long second) {
+    int s = (int) (second % 60);
+    int m = (int) (second / 60 % 60);
+    int h = (int) (second / 60 / 60);
+    return (h < 10 ? "0" + h : h) + ":" + (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s);
+  }
+}

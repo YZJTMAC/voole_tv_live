@@ -1,0 +1,395 @@
+package com.vad.sdk.core.model.v30;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.ref.WeakReference;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
+import android.os.Handler;
+import android.os.Message;
+import android.text.TextUtils;
+import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.View.OnKeyListener;
+import android.view.WindowManager;
+import android.widget.LinearLayout.LayoutParams;
+import android.widget.ImageView;
+import android.widget.RelativeLayout;
+
+import com.vad.sdk.core.VAdType;
+import com.vad.sdk.core.Utils.v30.DeviceUtil;
+import com.vad.sdk.core.Utils.v30.DisplayManagers;
+import com.vad.sdk.core.Utils.v30.Lg;
+import com.vad.sdk.core.base.MediaInfo;
+import com.vad.sdk.core.report.v30.ReportManager;
+import com.vad.sdk.core.view.v30.ADView;
+import com.vad.sdk.core.view.v30.AdWebView;
+import com.vad.sdk.core.view.v30.DownDialog;
+import com.vad.sdk.core.view.v30.JavaScriptInterface.ExitListener;
+import com.voole.android.client.UpAndAu.util.MD5Util;
+
+/**
+ * =============================================================<br>
+ * 直播浮层广告<br>
+ * 1.业务要求<br>
+ * 1.1:只展示本广告位的第一个广告介质<br>
+ * =============================================================<br>
+ * 2.汇报先关<br>
+ * 2.1:在有排期无广告介质的情况下,汇报一次<br>
+ * 2.2:在有排期有广告介质时,汇报
+ *
+ * @author luojunsheng
+ * @date 2016年9月7日 上午10:48:01
+ * @version 1.1
+ */
+public class AdPosTVDLiveListener extends AdPosBaseListener {
+
+  private static final int MSG_TVD_LIVE_START = 2001;
+  private static final int MSG_TVD_LIVE_IMGSHOW = 2002;
+  private static final int MSG_TVD_LIVE_REPORT = 2003;
+  private static final int MSG_TVD_LIVE_END = 2004;
+  boolean isView = false;
+  private ADView mADView = null;
+  private ImageView imageview;
+  private byte[] picByte;
+  private AlertDialog dialog;
+  private Thread thread;
+  private boolean isReport = false;
+  private RelativeLayout relativeLayout;
+  private WindowManager mWindowManager;
+  private MyHandler mHandler;
+  private int mCurrentTime = 0;
+  private DownDialog downDialog;
+  private boolean mFirst = true;
+  private Paint paint;
+
+  static class MyHandler extends Handler {
+    WeakReference<AdPosTVDLiveListener> mWeakReference;
+
+    MyHandler(AdPosTVDLiveListener adPosTVCLive) {
+      mWeakReference = new WeakReference<AdPosTVDLiveListener>(adPosTVCLive);
+    }
+
+    @Override
+    public void handleMessage(Message msg) {
+      AdPosTVDLiveListener adPosTVCLive = mWeakReference.get();
+      if (adPosTVCLive != null) {
+        switch (msg.what) {
+        case MSG_TVD_LIVE_IMGSHOW:
+          if (adPosTVCLive.picByte != null) {
+            Bitmap bitmap = BitmapFactory.decodeByteArray(adPosTVCLive.picByte, 0, adPosTVCLive.picByte.length);
+            adPosTVCLive.imageview.setImageBitmap(bitmap);
+            adPosTVCLive.picByte = null;
+            adPosTVCLive.thread = null;
+            bitmap = null;
+          }
+          break;
+        case MSG_TVD_LIVE_START:
+          if (adPosTVCLive.mAdPos != null && adPosTVCLive.mAdPos.mediaInfoList != null && adPosTVCLive.mAdPos.mediaInfoList.size() > 0) {
+
+            if (!TextUtils.isEmpty(adPosTVCLive.mAdPos.mediaInfoList.get(0).getSource())) {
+              int starttime = Integer.valueOf(!TextUtils.isEmpty(adPosTVCLive.mAdPos.mediaInfoList.get(0).getStarttime()) ? adPosTVCLive.mAdPos.mediaInfoList.get(0).getStarttime() : "5");
+              int length = Integer.valueOf(!TextUtils.isEmpty(adPosTVCLive.mAdPos.mediaInfoList.get(0).getLength()) ? adPosTVCLive.mAdPos.mediaInfoList.get(0).getLength() : "10");
+              Lg.d("AdPosTVDLiveListener , handleMessage() , mCurrentTime " + "" + "= " + adPosTVCLive.mCurrentTime + " , firstAdStartTime = " + starttime);
+
+              if (adPosTVCLive.mCurrentTime > starttime && adPosTVCLive.mCurrentTime < starttime + length + 1) {
+                Lg.d("AdPosTVDLiveListener----->mCurrentTime-->" + adPosTVCLive.mCurrentTime);
+                adPosTVCLive.showAd(adPosTVCLive.mAdPos.mediaInfoList.get(0));
+                adPosTVCLive.isView = true;
+                adPosTVCLive.mCurrentTime++;
+                adPosTVCLive.mHandler.sendMessageDelayed(adPosTVCLive.mHandler.obtainMessage(MSG_TVD_LIVE_START), 1000);
+              } else {
+                if (adPosTVCLive.mCurrentTime <= starttime) {
+                  adPosTVCLive.mCurrentTime++;
+                  adPosTVCLive.mHandler.sendMessageDelayed(adPosTVCLive.mHandler.obtainMessage(MSG_TVD_LIVE_START), 1000);
+                } else {
+                  adPosTVCLive.RemoverAd();
+                }
+              }
+            } else {
+              if (!adPosTVCLive.isReport) {
+                if (adPosTVCLive.mFirst) {
+                  String Reportvalue = adPosTVCLive.mAdPos.mediaInfoList.get(0).getReportvalue();
+                  ReportManager.getInstance().report(Reportvalue, 0, ReportManager.Start, adPosTVCLive.mReportUrl, adPosTVCLive.mAdPos.id);
+                  adPosTVCLive.isReport = true;
+                  adPosTVCLive.mFirst = false;
+                } else {
+                  adPosTVCLive.mHandler.sendEmptyMessageDelayed(MSG_TVD_LIVE_REPORT, 60000);
+                }
+              }
+            }
+          }
+          break;
+        case MSG_TVD_LIVE_END:
+          adPosTVCLive.RemoverAd();
+          break;
+        case MSG_TVD_LIVE_REPORT:
+          String Reportvalue = adPosTVCLive.mAdPos.mediaInfoList.get(0).getReportvalue();
+          ReportManager.getInstance().report(Reportvalue, 0, ReportManager.Start, adPosTVCLive.mReportUrl, adPosTVCLive.mAdPos.id);
+          adPosTVCLive.isReport = true;
+          break;
+        }
+      }
+    }
+  }
+
+  public AdPosTVDLiveListener() {
+
+    mHandler = new MyHandler(this);
+  }
+
+  public void onTime() {
+    Lg.d("AdPosTVDLiveListener----->onTime()-->Start");
+    removeAllMessageQueue();
+    mHandler.sendMessageDelayed(mHandler.obtainMessage(MSG_TVD_LIVE_START), 1000);
+  }
+
+  private void removeAllMessageQueue() {
+    if (mHandler != null) {
+      mHandler.removeMessages(MSG_TVD_LIVE_START);
+      mHandler.removeMessages(MSG_TVD_LIVE_IMGSHOW);
+      mHandler.removeMessages(MSG_TVD_LIVE_REPORT);
+      mHandler.removeMessages(MSG_TVD_LIVE_END);
+      mCurrentTime = 0;
+      isReport = false;
+    }
+  }
+
+  private void showAd(MediaInfo mediaInfo) {
+    if (mADView == null) {
+      Lg.d("AdPosTVDLiveListener , showAd()");
+      if (!TextUtils.isEmpty(mediaInfo.getSource())) {
+        mAdPosStatusListener.onAdStart();
+        WindowManager.LayoutParams wmParams = new WindowManager.LayoutParams();
+        mWindowManager = (WindowManager) mViewGroup.getContext().getSystemService(Context.WINDOW_SERVICE);
+        wmParams.type = android.view.WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG;
+        wmParams.format = PixelFormat.RGBA_8888;// 设置图片格式，效果为背景透明
+        wmParams.gravity = Gravity.LEFT | Gravity.TOP;
+        wmParams.x = 0;
+        wmParams.y = 0;
+
+        relativeLayout = new RelativeLayout(mViewGroup.getContext());
+        RelativeLayout.LayoutParams rootLayoutParams;
+        if (VAdType.AD_MEDIA_TYPE_TEXT.equals(mediaInfo.getViewtype())) {
+          paint = new Paint();
+          int textWidth = (int) paint.measureText(mediaInfo.getSource());
+          rootLayoutParams = new RelativeLayout.LayoutParams(DisplayManagers.getInstance().getScreenWidth() + textWidth, LayoutParams.WRAP_CONTENT);
+          wmParams.width = DisplayManagers.getInstance().getScreenWidth() + textWidth;
+          wmParams.height = WindowManager.LayoutParams.MATCH_PARENT;
+        } else {
+          rootLayoutParams = new RelativeLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+          wmParams.width = WindowManager.LayoutParams.MATCH_PARENT;
+          wmParams.height = WindowManager.LayoutParams.MATCH_PARENT;
+        }
+        relativeLayout.setLayoutParams(rootLayoutParams);
+
+        mADView = new ADView(mViewGroup.getContext());
+        int width = Integer.valueOf(!TextUtils.isEmpty(mediaInfo.getWidth()) ? mediaInfo.getWidth() : "0");
+        int height = Integer.valueOf(!TextUtils.isEmpty(mediaInfo.getHeight()) ? mediaInfo.getHeight() : "0");
+        int position = Integer.valueOf(!TextUtils.isEmpty(mediaInfo.getMediapos()) ? mediaInfo.getMediapos() : "7");
+        if (width == 0 && height == 0) {
+          width = DisplayManagers.getInstance().changeWidthSize(400);
+          height = DisplayManagers.getInstance().changeHeightSize(240);
+        } else {
+          width = DisplayManagers.getInstance().changeWidthSize(width);
+          height = DisplayManagers.getInstance().changeHeightSize(height);
+        }
+        RelativeLayout.LayoutParams adViewLayoutParams = new RelativeLayout.LayoutParams(width, height);
+        adViewLayoutParams = mADView.setSudokuParams(position, adViewLayoutParams);
+        mADView.setLayoutParams(adViewLayoutParams);
+        mADView.setAdMedia(mediaInfo);
+
+        // NOTE(ljs):浮层类广告在没有焦点的时候不响应setOnKeyListener()事件,
+        // FIXME(ljs):暂时无法实现无二级跳转不获取焦点的需求
+        // String skipType = mediaInfo.getSkiptype();
+        // if ("1".equals(skipType) || "2".equals(skipType) || "3".equals(skipType)) {
+        // relativeLayout.setFocusable(true);
+        // relativeLayout.setFocusableInTouchMode(true);
+        // relativeLayout.requestFocus();
+        // }
+        relativeLayout.setFocusable(true);
+        relativeLayout.setFocusableInTouchMode(true);
+        relativeLayout.requestFocus();
+        setonClick(relativeLayout, mediaInfo);
+
+        relativeLayout.addView(mADView);
+        mWindowManager.addView(relativeLayout, wmParams);
+      }
+      if (!isReport) {
+        isReport = true;
+        String Reportvalue = mediaInfo.getReportvalue();
+        ReportManager.getInstance().report(Reportvalue, 0, ReportManager.Start, mReportUrl, mAdPos.id);
+      }
+    }
+  }
+
+  public void hideAd() {
+    Message msg = Message.obtain();
+    msg.what = MSG_TVD_LIVE_END;
+    mHandler.sendMessage(msg);
+  }
+
+  public void RemoverAd() {
+    removeAllMessageQueue();
+    // if (dialog != null && dialog.isShowing()) {
+    // dialog.dismiss();
+    // }
+    if (mADView != null && relativeLayout != null) {
+      if (picByte != null || thread != null) {
+        picByte = null;
+        thread = null;
+      }
+      mAdPosStatusListener.onAdEnd();
+      isView = false;
+      mADView.setVisibility(View.GONE);
+      mADView.stopAd();
+      relativeLayout.removeView(mADView);
+      mWindowManager.removeView(relativeLayout);
+      relativeLayout = null;
+      mADView = null;
+    }
+  }
+
+  private void setonClick(View view, final MediaInfo info) {
+    view.setOnKeyListener(new OnKeyListener() {
+
+      @Override
+      public boolean onKey(View v, int keyCode, KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+          if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) {
+            hideAd();
+            return true;
+          }
+          if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+            if ("1".equals(info.getSkiptype())) {
+              if (picByte != null || thread != null) {
+                picByte = null;
+                thread = null;
+              }
+              AlertDialog.Builder builder = new AlertDialog.Builder(mViewGroup.getContext());
+              dialog = builder.create();
+              dialog.show();
+              dialog.getWindow().setLayout(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+              imageview = new ImageView(mViewGroup.getContext());
+              LayoutParams imageParams = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+              imageview.setLayoutParams(imageParams);
+              dialog.setContentView(imageview);
+              Runnable runnable = new Runnable() {
+                @Override
+                public void run() {
+                  try {
+                    String uri = info.getUrl();
+                    URL url = new URL(uri);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setReadTimeout(10000);
+
+                    if (conn.getResponseCode() == 200) {
+                      InputStream fis = conn.getInputStream();
+                      ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                      byte[] bytes = new byte[1024];
+                      int length = -1;
+                      while ((length = fis.read(bytes)) != -1) {
+                        bos.write(bytes, 0, length);
+                      }
+                      picByte = bos.toByteArray();
+                      bos.close();
+                      fis.close();
+
+                      Message message = new Message();
+                      message.what = MSG_TVD_LIVE_IMGSHOW;
+                      mHandler.sendMessage(message);
+                    }
+                  } catch (IOException e) {
+                    e.printStackTrace();
+                  }
+                }
+              };
+              thread = new Thread(runnable);
+              thread.start();
+              ReportManager.getInstance().report(info.getReportvalue(), 1, ReportManager.Start, mReportUrl, mAdPos.id.substring(0, 2));
+            } else if ("2".equals(info.getSkiptype())) {// 跳转网页
+              // hideAd();
+              AlertDialog.Builder builder = new AlertDialog.Builder(mViewGroup.getContext());
+              final AlertDialog mWebDialog = builder.create();
+              mWebDialog.show();
+              mWebDialog.getWindow().setLayout(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+              LayoutParams lp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+              AdWebView mDialogWv = new AdWebView(mViewGroup.getContext(), lp);
+              mDialogWv.setJsExitListener(new ExitListener() {
+                @Override
+                public void onExit() {
+                  mWebDialog.cancel();
+                }
+              });
+              mWebDialog.setContentView(mDialogWv);
+              if (info.getUrl().length() > 4 && "http".equals(info.getUrl().subSequence(0, 4))) {
+                mDialogWv.loadUrl(info.getUrl());
+              } else {
+                mDialogWv.loadUrl("http://" + info.getUrl());
+              }
+              // mDialogWv.loadUrl("http://"+ info.getUrl());
+              // mDialogWv.loadUrl( info.getUrl());
+              mDialogWv.setVisibility(View.VISIBLE);
+              ReportManager.getInstance().report(info.getReportvalue(), 1, ReportManager.Start, mReportUrl, mAdPos.id.substring(0, 2));
+            } else if ("3".equals(info.getSkiptype())) {// 跳转apk页面或者下载apk
+              // hideAd();
+              final String Package = info.getPkgname();
+              final String url = info.getUrl();
+              String fileName = "";
+              if (url != null) {
+                fileName = MD5Util.getMD5String(url).substring(8, 24) + ".apk";
+              }
+              final String appName = info.getName();
+              boolean isInstall = DeviceUtil.checkPackageExist(mViewGroup.getContext(), Package);
+              if (isInstall) {
+                Intent intent = new Intent();
+                if (!TextUtils.isEmpty(info.getAction())) {
+                  intent.setAction(info.getAction());
+                } else {
+                  intent = mViewGroup.getContext().getPackageManager().getLaunchIntentForPackage(Package);
+                }
+                try {
+                  JSONObject jsonObject = new JSONObject(info.getApkinfo());
+                  String intentMid = jsonObject.getString("intentMid");
+                  intent.putExtra("intentMid", intentMid);
+                  String fromApp = jsonObject.getString("fromApp");
+                  intent.putExtra("fromApp", fromApp);
+                } catch (JSONException e) {
+                  e.printStackTrace();
+                }
+                mViewGroup.getContext().startActivity(intent);
+              } else {
+                if (downDialog == null) {
+                  downDialog = new DownDialog(mViewGroup.getContext());
+                }
+                downDialog.start(url, fileName, appName);
+              }
+              if ("1".equals(info.getSkiptype()) || "2".equals(info.getSkiptype()) || "3".equals(info.getSkiptype())) {
+                Lg.d("直播播放中浮层,有二级跳转,汇报");
+                ReportManager.getInstance().report(info.getReportvalue(), 1, ReportManager.Start, mReportUrl, mAdPos.id.substring(0, 2));
+              } else {
+                Lg.d("直播播放中浮层,无二级跳转,不汇报");
+              }
+            }
+            return true;
+          }
+        }
+        return false;
+      }
+    });
+  }
+}

@@ -1,0 +1,868 @@
+package com.vad.sdk.core.controller.v30;
+
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import android.content.Context;
+import android.media.MediaPlayer;
+import android.os.Handler;
+import android.os.Message;
+import android.text.TextUtils;
+import android.util.Log;
+import android.view.KeyEvent;
+import android.widget.RelativeLayout;
+import android.widget.Toast;
+
+import com.vad.sdk.core.VAdSDK;
+import com.vad.sdk.core.VAdType;
+import com.vad.sdk.core.Utils.v30.Lg;
+import com.vad.sdk.core.Utils.v30.Utils;
+import com.vad.sdk.core.base.AdEvent;
+import com.vad.sdk.core.base.AdEvent.AdStatus;
+import com.vad.sdk.core.base.AdEvent.AdType;
+import com.vad.sdk.core.base.interfaces.IAdPlayer;
+import com.vad.sdk.core.base.interfaces.IAdPlayerUIController;
+import com.vad.sdk.core.base.AdInfo;
+import com.vad.sdk.core.base.AdPos;
+import com.vad.sdk.core.base.AdRegister;
+import com.vad.sdk.core.base.Slice;
+import com.vad.sdk.core.model.v30.AdPosBaseListener.IAdPosStatusListener;
+import com.vad.sdk.core.model.v30.AdPosExitListener;
+import com.vad.sdk.core.model.v30.AdPosLoadingListener;
+import com.vad.sdk.core.model.v30.AdPosPauseListener;
+import com.vad.sdk.core.model.v30.AdPosTVCListener;
+import com.vad.sdk.core.model.v30.AdPosTVCMiddleListener;
+import com.vad.sdk.core.model.v30.AdPosTVDListener;
+import com.vad.sdk.core.model.v30.parser.ApiDataParser;
+import com.vad.sdk.core.model.v30.parser.ApiResponseListener;
+import com.vad.sdk.core.report.v30.ReportManager;
+
+public class AdEpgPlayerController extends AdBasePlayerController {
+  private static final int MSG_PARSER_FINISH = 2001;// 解析点播数据完成
+  private static final int MSG_TCV_SHOWING = 2002; // 前贴片
+  private static final int MSG_TCV_SHOW_END = 2003;
+  private static final int MSG_MOVIE_SHOW = 2004;
+  private static final int MSG_TVC_MIDDLE_SHOW = 2005;
+  private static final int MSG_TVD_SHOWING = 2006;
+  private static final int MSG_TVD_SHOW_END = 2007;
+  private static final int MSG_TVD_TIME_PRE = 2008;
+  private AdPosLoadingListener mAdPosLoadingListener = null; // 缓冲广告
+  private AdPosPauseListener mAdPosPauseListener = null; // 暂停广告
+  private AdPosExitListener mAdPosExitListener = null; // 退出广告
+  private AdPosTVCListener mAdPosTVCListener = null; // 前贴片广告
+  private AdPosTVCMiddleListener mAdPosTVCMiddleListener = null; // 中贴片广告
+  private AdPosTVDListener mAdPosTVDListener = null; // 场景广告
+  //
+  private AdRegister mRegister;
+  private List<Slice> mSlices = new ArrayList<Slice>();
+  private int onSeekPosition = -1;
+  private int TextStartTime = -1;
+  private int TextLength = 0;
+  private int status = 0; // ad status
+  private List<AdPos> adPosList;
+  private int mTVCAdAllLength = 0;// 前贴片广告总长度
+  private int mMediaPlayerPrePosition = 0;
+  private int mMediaPlayerCurrentPosition;
+  private Context mContext;
+  private String text;
+  private RelativeLayout relativeLayout;
+  //
+  private int mPreviousBreakPoint = 0;// 正片续播的点
+
+  private boolean isTextView = false;
+  private Timer mTimer;
+  private TimerTask mTimerTask;
+
+  private boolean isPlayerPause = false;// Player是否暂停
+  private boolean mHasStartTimer = false;// Thimer是否开启
+  private boolean isShowLoadingAd = false;// 缓冲广告开播
+  private boolean isShowTVD = false;// TVD广告是否播放
+  private boolean isShowTVC = false;// TVC广告是否播放
+  private boolean isShowTVCMiddle = false;// TVCMiddle 广告是否播放
+  private boolean isShowPauseAd = false;// 暂停广告是否
+  private boolean isShowExitAd = false;// 退出广告是否正在展示
+  private String mTraceLogTpye = "-1";// 追踪日志用的
+  // 多次点击返回键退出
+  private long mExitTime = 0;
+  private boolean mIsDoubleClickKeyBack;
+  private ReportManager mReportManager;
+  private Handler mHandler;
+
+  static class MyHandler extends Handler {
+    WeakReference<AdEpgPlayerController> mWeakReference;
+
+    MyHandler(AdEpgPlayerController controller) {
+      mWeakReference = new WeakReference<AdEpgPlayerController>(controller);
+    }
+
+    @Override
+    public void handleMessage(Message msg) {
+      final AdEpgPlayerController controller = mWeakReference.get();
+      if (controller == null) {
+        return;
+      }
+      Lg.i("AdEpgPlayerController , handler what = " + msg.what + " , obj = " + msg.obj);
+      switch (msg.what) {
+      case MSG_TVD_TIME_PRE:
+        if (controller.mAdPlayer != null && controller.mAdPosTVCListener != null) {
+          // NOTE(ljs):由于701与702的问题会造成
+          controller.mMediaPlayerPrePosition = (Integer) msg.obj;
+          int originalCurrentPosition = controller.mAdPlayer.originalGetCurrentPosition();
+          if (controller.mMediaPlayerPrePosition != originalCurrentPosition) {
+            if (controller.isShowTVC) {
+              controller.mAdPosTVCListener.setTVCPause(controller.isPlayerPause);
+            }
+          }
+        }
+        break;
+      case MSG_PARSER_FINISH:
+        if (controller.mAdPosLoadingListener != null && controller.mAdPlayerUIController != null) {
+          // NOTE(ljs):在有loading的时候拦截退出,方便AdPosLoadingListener取消计时器
+          controller.mAdPlayerUIController.setCanExit(false);
+          controller.mAdPosLoadingListener.setAdPosStatusListener(new IAdPosStatusListener() {
+            @Override
+            public void onAdStart() {
+              Lg.d("AdPosLoadingListener-->show()-->onAdEnd():缓冲广告开始");
+              controller.isShowLoadingAd = true;
+              controller.mIsPlayerLoading = true;
+              controller.notifyAdEvent(new AdEvent(AdType.LOADING, AdStatus.AD_START));
+            }
+
+            @Override
+            public void onAdEnd() {
+              Lg.d("AdPosLoadingListener-->show()-->onAdEnd():缓冲广告结束");
+              controller.isShowLoadingAd = false;
+              controller.mIsPlayerLoading = false;
+              controller.notifyAdEvent(new AdEvent(AdType.LOADING, AdStatus.AD_END));
+              // NOTE(ljs):loading广告展示完[在没有广告时直接回调onAdEnd()]
+              // invokeSuperPrepare(adXml);
+              // NOTE(ljs):MediaPlayer要依靠AdStatus.AD_END做判断
+              // notifyAdEvent(new AdEvent(AdType.LOADING, AdStatus.AD_END));
+              controller.onCountComplete();
+            }
+          });
+          if (controller.mAdPosLoadingListener != null) {
+            // NOTE(ljs):展示播放前的缓冲广告
+            controller.mAdPosLoadingListener.show();
+          }
+        }
+        break;
+      case MSG_TCV_SHOWING:// 前贴片计时中
+        // if (mAdPosTVCListener != null) {
+        // isShowTVC = true;
+        // mAdPosTVCListener.setCountDownTime(mMediaPlayerCurrentPosition);
+        // mAdPlayerUIController.setCanSeek(false);
+        // // NOTE(ljs):在show前贴片的时候拦截退出,方便AdPosTVCListener做stop()动作
+        // mAdPlayerUIController.setCanExit(false);
+        // }
+        break;
+      case MSG_TCV_SHOW_END:// 前贴片结束
+        // if (mAdPosTVCListener != null) {
+        // isShowTVC = false;
+        // if (mAdPosTVCListener != null) {
+        // mAdPosTVCListener.stop();
+        // mAdPosTVCListener = null;
+        // }
+        // if (mPreviousBreakPoint != 0 && mAdPlayerUIController != null) {
+        // mAdPlayerUIController.setCanSeek(true);
+        // mAdPlayerUIController.onSeek(mPreviousBreakPoint + mTVCAdAllLength);
+        // }
+        // }
+        break;
+      case MSG_MOVIE_SHOW:// 正片展示
+        if (controller.isShowTVCMiddle && controller.mAdPosTVCMiddleListener != null) {
+          controller.isShowTVCMiddle = false;
+          controller.mAdPosTVCMiddleListener.showCountDownTime(0);
+        }
+        controller.isShowTVCMiddle = false;
+        controller.isShowTVC = false;
+        if (controller.mAdPlayerUIController != null) {
+          controller.mAdPlayerUIController.setCanExit(false);
+          controller.mAdPlayerUIController.setCanSeek(true);
+        }
+        if (controller.mAdPosTVCMiddleListener != null && controller.mAdPlayerUIController != null) {
+          controller.mAdPosTVCMiddleListener.showCountDownTime(controller.mMediaPlayerCurrentPosition);
+        }
+        break;
+      case MSG_TVC_MIDDLE_SHOW:// 中贴片展示
+        if (controller.mAdPosTVCMiddleListener != null && controller.mAdPlayerUIController != null) {
+          controller.isShowTVCMiddle = true;
+          controller.mAdPlayerUIController.setCanExit(false);// 中贴片中退出显示退出广告
+          // controller.mAdPlayerUIController.setCanSeek(false);
+          // controller.mAdPosTVCMiddleListener.showCountDownTime(controller.mMediaPlayerCurrentPosition);
+        }
+        break;
+      case MSG_TVD_SHOWING:
+        if (!controller.isShowTVD) {
+          if (controller.mAdPosTVDListener != null && controller.mAdPlayer != null) {
+            controller.isShowTVD = controller.mAdPosTVDListener.start(msg.arg1);
+            controller.onSeekPosition = (msg.arg1);
+          }
+        } else {
+          if (controller.mAdPosTVDListener != null && controller.mAdPlayer != null) {
+            controller.isShowTVD = controller.mAdPosTVDListener.start(msg.arg1);
+            controller.isShowTVD = controller.mAdPosTVDListener.notice(msg.arg1);
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  @Override
+  public void init(Context context, IAdPlayer adPlayer, IAdPlayerUIController adPlayerUIController, AdRegister adRegister) {
+    super.init(context, adPlayer, adPlayerUIController, adRegister);
+    mHandler = new MyHandler(this);
+    mRegister = adRegister;
+  }
+
+  @Override
+  public void onPrepare(final String adXml, Map<String, String> extMaps) {
+    Lg.i("AdEpgPlayerController , onPrepare()");
+    createTimer();
+    mContext = mAdPlayerUIController.getAdView().getContext();
+    mAdPlayerUIController.setCanSeek(false);
+    Lg.i("AdEpgPlayerController , onPrepare()-->setCanSeek(false)");
+    Lg.d("AdEpgPlayerController , onPrepare() , mAdRegister = " + mAdRegister);
+
+    invokeSuperPrepare(adXml, extMaps);
+
+    if (mAdRegister != null && mAdRegister.defaultreporturl != null && mAdRegister.defaultadinf != null) {
+      Lg.e("AdEpgPlayerController-->onPrepare-->mAdRegister check ok");
+      parserXml(adXml);
+    } else {
+      // NOTE(ljs):导流注册失败,不能影响影片的正常流程
+      Lg.e("AdEpgPlayerController-->onPrepare-->mAdRegister check fail(导流注册失败,不能影响影片的正常流程)");
+      if (mAdPlayerUIController != null) {
+        mAdPlayerUIController.setCanExit(true);
+        mAdPlayerUIController.setCanSeek(true);
+      }
+    }
+  }
+
+  private void invokeSuperPrepare(String adXml, Map<String, String> extMaps) {
+    Lg.e("AdEpgPlayerController , invokeSuperPrepare()");
+    super.onPrepare(adXml, extMaps);
+  }
+
+  @Override
+  public void onStart(int position) {
+    // NOTE(ljs):如果是第一次播放position=0;如果是续播position是正片上次播放的时间点
+    Lg.e("AdEpgPlayerController , onStart(int pos) , position = " + position);
+    Lg.e("AdEpgPlayerController , onStart(int pos) , position = " + Utils.secondToString(position / 1000));
+    if (mAdPosTVCListener == null) {
+      mAdPlayerUIController.onMovieStart();
+    }
+    super.onStart(position);
+    mPreviousBreakPoint = position;
+
+    if (!mHasStartTimer && mTimer != null) {
+      mTimer.schedule(mTimerTask, 0, 1000);
+      mHasStartTimer = true;
+    }
+    // NOTE(ljs):前贴片自己计时
+    if (!isShowTVC && mAdPosTVCListener != null) {
+      mAdPosTVCListener.showCountDownTime(mAdPosTVCListener.getAdAllLength());
+    }
+
+    if (mAdPosTVCListener == null) {
+      if (position != 0 && mAdPlayerUIController != null) {
+        mAdPlayerUIController.setCanSeek(true);
+        mAdPlayerUIController.onSeek(position);
+      }
+    }
+  }
+
+  @Override
+  public void onStart() {
+    // NOTE(ljs):播放器暂停-->重新播放时调用
+    Lg.e("AdEpgPlayerController , onStart():播放器暂停-->重新播放");
+    isPlayerPause = false;
+    if (mAdPosPauseListener != null) {
+      mAdPosPauseListener.stop();
+      isShowPauseAd = false;
+    }
+    // NOTE(ljs):为了保证退出广告的展示
+    if (mAdPosExitListener != null) {
+      mAdPlayerUIController.setCanExit(false);
+    }
+    if (isShowTVC && !isPlayerPause) {
+      mAdPosTVCListener.setTVCPause(false);
+    }
+    super.onStart();
+  }
+
+  @Override
+  public void onPause(boolean isAllowShowAd) {
+    // NOTE(ljs):1.前贴片可以暂停,与暂停广告互斥
+    // NOTE(ljs):2.中贴片可以暂停,与暂停广告互斥
+    Lg.e("AdEpgPlayerController , onPause() , isShowTVD = " + isShowTVD + " , isShowTVC = " + isShowTVC + " , isShowTVCMiddle = " + isShowTVCMiddle);
+    isPlayerPause = true;
+    super.onPause(isAllowShowAd);
+    if (isShowTVC && mAdPosTVCListener != null) {
+      mAdPosTVCListener.setTVCPause(true);
+      mAdPosTVCListener.open();
+    }
+
+    if (isShowTVD && mAdPosTVDListener != null) {
+      mAdPosTVDListener.open();
+    }
+
+    if (isShowTVCMiddle) {
+      // TODO(ljs):中贴片可以暂停,与暂停广告互斥
+    }
+
+    if (!isShowLoadingAd && !isShowTVD && !isShowTVC && !isShowTVCMiddle && !isShowPauseAd && mAdPosPauseListener != null) {
+      if (isAllowShowAd) {
+        mAdPosPauseListener.showPauseAd();
+        isShowPauseAd = true;
+      } else {
+        isShowPauseAd = false;
+      }
+    }
+  }
+
+  @Override
+  public void onReset() {
+    Lg.e("AdEpgPlayerController , onReset()");
+    mHasStartTimer = false;
+    isShowLoadingAd = false;
+    isShowTVD = false;
+    isShowTVC = false;
+    isShowTVCMiddle = false;
+    isShowPauseAd = false;
+    isShowExitAd = false;
+
+    onSeekPosition = -1;
+    TextStartTime = -1;
+    TextLength = 0;
+    status = 0; // ad status
+    adPosList = null;
+    mTVCAdAllLength = 0;
+    mMediaPlayerCurrentPosition = 0;
+    text = "";
+    relativeLayout = null;
+    isTextView = false;
+    if (mTimer != null) {
+      mTimer.cancel();
+      mTimer = null;
+    }
+    if (mTimerTask != null) {
+      mTimerTask.cancel();
+    }
+    if (mAdPosPauseListener != null) {
+      if (isShowPauseAd) {
+        mAdPosPauseListener.reset();
+      }
+    }
+    if (mAdPosLoadingListener != null) {
+      mAdPosLoadingListener.stop();
+    }
+    if (mAdPosPauseListener != null) {
+      mAdPosPauseListener.stop();
+    }
+    if (mAdPosTVDListener != null) {
+      mAdPosTVDListener.stop();
+    }
+    if (mAdPosTVCListener != null) {
+      mAdPosTVCListener.stop();
+    }
+    if (mAdPosTVCMiddleListener != null) {
+      mAdPosTVCMiddleListener.reset();
+    }
+    mAdPosLoadingListener = null;
+    mAdPosPauseListener = null;
+    mAdPosTVCListener = null;
+    mAdPosTVCMiddleListener = null;
+    mAdPosTVDListener = null;
+
+    // mAdPlayerUIController.setCanSeek(true);
+    // mAdPlayerUIController.setCanExit(true);
+    super.onReset();
+  }
+
+  @Override
+  public void onStop() {
+    onStopExit();
+  }
+
+  private void onStopExit() {
+    super.onStop();
+  }
+
+  public void setAdPosList(List<AdPos> adPosList) {
+    this.adPosList = adPosList;
+  }
+
+  @Override
+  public void onSeek(int position) {
+    // NOTE(ljs):seek到的position为整部片子的position,即前贴片+正片+中贴片
+    // NOTE(ljs):seek时为防止看到最后一秒前贴片,应在时间上+1s
+    Log.d("ooxx", "AdEpgPlayerController , onSeek() , position = " + position);
+    onSeekPosition = ((mTVCAdAllLength == 0 ? 0 : mTVCAdAllLength + 1) + position) / 1000;
+    // =====================================================================
+    // NOTE(ljs):用户seek()到中贴片中时,自动seek到中贴片的开头,并且不允许seek
+    if (mSlices.size() > 1) {
+      for (Slice slice : mSlices) {
+        if (onSeekPosition >= slice.mStartTime && onSeekPosition < slice.mEndTime && slice.mIsTVCMiddle) {
+          onSeekPosition = slice.mStartTime;
+          Log.d("ooxx", "AdEpgPlayerController ,seek到中贴片 , onSeekPosition = " + onSeekPosition);
+          mAdPlayerUIController.setCanSeek(false);
+        }
+      }
+    }
+    // =====================================================================
+    Log.d("ooxx", "AdEpgPlayerController , onSeek() , onSeekPosition = " + onSeekPosition);
+    super.onSeek(onSeekPosition * 1000);
+  }
+
+  @Override
+  public int getCurrentPosition() {
+    if (mTVCAdAllLength != -1) {
+      if (super.getCurrentPosition() - (mTVCAdAllLength * 1000) < 0) {
+        return 0;
+      } else {
+        return super.getCurrentPosition() - (mTVCAdAllLength * 1000);
+      }
+    }
+
+    return super.getCurrentPosition();
+  }
+
+  @Override
+  public int getDuration() {
+    if (mTVCAdAllLength != -1) {
+      return super.getDuration() - (mTVCAdAllLength * 1000);
+    }
+    return super.getDuration();
+  }
+
+  private void parserXml(String xmlRawData) {
+    Lg.d("AdEpgPlayerController , parserXml():解析点播的广告xml数据");
+    if (mAdRegister != null) {
+      ApiDataParser apiDataParser = new ApiDataParser();
+      apiDataParser.asynGetApiData(xmlRawData, new ApiResponseListener<AdInfo>() {
+
+        @Override
+        public void onApiCompleted(AdInfo data) {
+          Lg.d("AdEpgPlayerController , onApiCompleted()");
+          mSlices.add(new Slice(-1, -1, false, null));
+          if (data != null && data.adPostions != null && data.adPostions.size() > 0) {
+            setVADTypeData(data.adPostions);
+          }
+          mHandler.sendMessageDelayed(mHandler.obtainMessage(MSG_PARSER_FINISH, "解析数据完成"), 0);
+        }
+      });
+    }
+  }
+
+  /**
+   * 根据广告位adPos中id分别处理数据
+   *
+   * @param adPostions
+   */
+  private void setVADTypeData(List<AdPos> adPostions) {
+    Lg.d("AdEpgPlayerController , setVADTypeData()");
+    for (AdPos adPos : adPostions) {
+      if (!mRegister.isContainPosId(adPos.id)) {
+        Lg.e("注册接口无此adposId = " + adPos.id);
+        return;
+      }
+      // NOTE(ljs):根据广告的id区分广告类型
+      if (VAdType.AD_PLAY_D_LOADING.equals(adPos.id)) {// NOTE(ljs):播放前的缓冲广告id=17xx1010
+        if (adPos.mediaInfoList.size() > 0) {
+          mAdPosLoadingListener = new AdPosLoadingListener();
+          mAdPosLoadingListener.setData(adPos);
+          mAdPosLoadingListener.setReportUrl(mAdRegister.defaultreporturl);
+          // NOTE(ljs): 这里的View就是VooleMediaPlayer
+          mAdPosLoadingListener.setViewGroup(mAdPlayerUIController.getAdView());
+        }
+      } else if (VAdType.AD_PLAY_D_TVC_START.equals(adPos.id)) {// NOTE(ljs):id=15xx1010,前贴片广告
+        if (adPos.mediaInfoList.size() > 0) {
+          mAdPosTVCListener = new AdPosTVCListener();
+          mAdPosTVCListener.setAdPosStatusListener(new IAdPosStatusListener() {
+
+            @Override
+            public void onAdStart() {
+              Lg.e("AdEpgPlayerController-->AdPosTVCListener-->： 前贴片开始");
+              AdEpgPlayerController.this.notifyAdEvent(new AdEvent(AdType.TVC, AdStatus.AD_START));
+              isShowTVC = true;
+              if (mAdPlayerUIController != null) {
+                mAdPlayerUIController.setCanSeek(false);
+                // NOTE(ljs):在show前贴片的时候拦截退出,方便AdPosTVCListener做stop()动作
+                mAdPlayerUIController.setCanExit(false);
+              }
+            }
+
+            @Override
+            public void onAdEnd() {
+              Lg.e("AdEpgPlayerController-->AdPosTVCListener-->： 前贴片结束");
+              AdEpgPlayerController.this.notifyAdEvent(new AdEvent(AdType.TVC, AdStatus.AD_END));
+              isShowTVC = false;
+              if (mAdPlayerUIController != null) {
+                mAdPlayerUIController.onMovieStart();
+                mAdPlayerUIController.setCanSeek(true);
+              }
+              if (mAdPosTVCListener != null) {
+                mAdPosTVCListener.stop();
+                mAdPosTVCListener = null;
+              }
+              if (mPreviousBreakPoint != 0 && mAdPlayerUIController != null) {
+                mAdPlayerUIController.onSeek(mPreviousBreakPoint + mTVCAdAllLength);
+              }
+            }
+          });
+          mAdPosTVCListener.setViewGroup(mAdPlayerUIController.getAdView());
+          mAdPosTVCListener.setData(adPos);
+          mAdPosTVCListener.setReportUrl(mAdRegister.defaultreporturl);
+          mTVCAdAllLength = Integer.parseInt(adPos.allLength);
+        }
+      } else if (VAdType.AD_PLAY_D_TVC_MIDDLE.equals(adPos.id)) {// NOTE(ljs):id=15xx1011,前贴片广告
+        if (adPos.mediaInfoList != null && adPos.mediaInfoList.size() > 0) {
+          // NOTE(ljs):必须确保中贴片排期并且有介质的情况下才分裂正片
+          if (!TextUtils.isEmpty(adPos.mediaInfoList.get(0).getSource())) {
+            mSlices.clear();
+            for (int k = 0; k < 2 * adPos.mediaInfoList.size() + 1; k++) {
+              if (k % 2 == 0) {// 正片
+                int start = 0;
+                int lenght = 0;
+                int nextStart = 0;
+                if (k != 0) {
+                  start = Integer.parseInt(TextUtils.isEmpty(adPos.mediaInfoList.get(k / 2 - 1).getStarttime()) ? "0" : adPos.mediaInfoList.get(k / 2 - 1).getStarttime());
+                  lenght = Integer.parseInt(TextUtils.isEmpty(adPos.mediaInfoList.get(k / 2 - 1).getLength()) ? "0" : adPos.mediaInfoList.get(k / 2 - 1).getLength());
+                }
+                if (k == 2 * adPos.mediaInfoList.size()) {
+                  // NOTE(ljs):不清楚最后正片的endtime,-1标记
+                  nextStart = -1;
+                  mSlices.add(new Slice(mTVCAdAllLength + start + lenght, nextStart, false, null));
+                } else {
+                  nextStart = Integer.parseInt(TextUtils.isEmpty(adPos.mediaInfoList.get(k / 2).getStarttime()) ? "0" : adPos.mediaInfoList.get(k / 2).getStarttime());
+                  mSlices.add(new Slice(mTVCAdAllLength + start + lenght, mTVCAdAllLength + nextStart, false, null));
+                }
+              } else {// 中贴片
+                int start = Integer.parseInt(TextUtils.isEmpty(adPos.mediaInfoList.get((k - 1) / 2).getStarttime()) ? "0" : adPos.mediaInfoList.get((k - 1) / 2).getStarttime());
+                int lenght = Integer.parseInt(TextUtils.isEmpty(adPos.mediaInfoList.get((k - 1) / 2).getLength()) ? "0" : adPos.mediaInfoList.get((k - 1) / 2).getLength());
+                mSlices.add(new Slice(mTVCAdAllLength + start, mTVCAdAllLength + start + lenght, true, adPos.mediaInfoList.get((k - 1) / 2)));
+              }
+            }
+          }
+          Lg.e("AdEpgPlayerController-->中贴片切割数据 = " + mSlices.toString());
+          mAdPosTVCMiddleListener = new AdPosTVCMiddleListener();
+          mAdPosTVCMiddleListener.setViewGroup(mAdPlayerUIController.getAdView());
+          mAdPosTVCMiddleListener.setData(adPos, mSlices, mTVCAdAllLength);
+          mAdPosTVCMiddleListener.setReportUrl(mAdRegister.defaultreporturl);
+          mAdPosTVCMiddleListener.setAdPosStatusListener(new IAdPosStatusListener() {
+
+            @Override
+            public void onAdStart() {
+              mAdPlayerUIController.setCanSeek(false);
+              Lg.e("AdEpgPlayerController-->AdPosTVCMiddleListener-->: 中贴片开始");
+            }
+
+            @Override
+            public void onAdEnd() {
+              mAdPlayerUIController.setCanSeek(true);
+              Lg.e("AdEpgPlayerController-->AdPosTVCMiddleListener-->: 中贴片结束");
+            }
+          });
+        }
+      } else if (VAdType.AD_PLAY_D_EXIT.equals(adPos.id)) {// NOTE(ljs):播放退出 id=17XX1410
+        if (adPos.mediaInfoList.size() > 0) {
+          mAdPosExitListener = new AdPosExitListener();
+          mAdPosExitListener.setAdPosStatusListener(new IAdPosStatusListener() {
+
+            @Override
+            public void onAdStart() {
+              Lg.e("AdEpgPlayerController-->AdPosExitListener-->: 退出 贴片开始");
+              onReset();
+              isShowExitAd = true;
+              mAdPlayerUIController.setCanExit(false);
+            }
+
+            @Override
+            public void onAdEnd() {
+              Lg.e("AdEpgPlayerController-->AdPosExitListener-->: 退出 贴片结束");
+              isShowExitAd = false;
+              if (mAdPlayerUIController != null) {
+                mAdPlayerUIController.setCanExit(true);
+                mAdPlayerUIController.onExit();
+              }
+            }
+          });
+          mAdPosExitListener.setData(adPos);
+          mAdPosExitListener.setReportUrl(mAdRegister.defaultreporturl);
+          mAdPosExitListener.setViewGroup(mAdPlayerUIController.getAdView());
+        }
+      } else if (VAdType.AD_PLAY_D_PAUSE.equals(adPos.id)) {
+        if (adPos.mediaInfoList.size() > 0) {
+          mAdPosPauseListener = new AdPosPauseListener();
+          mAdPosPauseListener.setData(adPos);
+          mAdPosPauseListener.setReportUrl(mAdRegister.defaultreporturl);
+          mAdPosPauseListener.setViewGroup(mAdPlayerUIController.getAdView());
+        }
+      } else if (VAdType.AD_PLAY_D_TVD.equals(adPos.id)) {// NOTE(ljs):片中场景广告,id=17XX1310
+        if (adPos.mediaInfoList.size() > 0 && !TextUtils.isEmpty(adPos.mediaInfoList.get(0).getSource())) {
+          mAdPosTVDListener = new AdPosTVDListener(10);
+          mAdPosTVDListener.setAdPosStatusListener(new IAdPosStatusListener() {
+
+            @Override
+            public void onAdStart() {
+              isShowTVD = true;
+              Lg.e("AdEpgPlayerController-->AdPosTVDListener-->: 片中场景广告开始");
+            }
+
+            @Override
+            public void onAdEnd() {
+              isShowTVD = false;
+              Lg.e("AdEpgPlayerController-->AdPosTVDListener-->: 片中场景广告结束");
+            }
+          });
+          mAdPosTVDListener.setData(adPos);
+          mAdPosTVDListener.setReportUrl(mAdRegister.defaultreporturl);
+          mAdPosTVDListener.setViewGroup(mAdPlayerUIController.getAdView());
+        } else {
+          // NOTE(ljs):存在片中场景广告位,但是没有广告介质的情况下,在起播的时候要汇报一次
+          // FIXME(ljs):但是在不存在片中场景广告位时无法汇报
+          Lg.e("存在片中场景广告位,但是没有广告介质的情况下,在起播的时候要汇报一次");
+          mReportManager = ReportManager.getInstance();
+          mReportManager.report(adPos.mediaInfoList.get(0).getReportvalue(), 0, ReportManager.Start, mAdRegister.defaultreporturl, adPos.id.substring(0, 2));
+        }
+      }
+    }
+    if (mAdPosTVDListener != null) {
+      mAdPosTVDListener.setTime(mTVCAdAllLength);
+    }
+
+  }
+
+  @Override
+  public boolean onKeyDown(int keyCode) {
+    Lg.d("AdEpgPlayerController , onKeyDown() , keyCode = " + keyCode);
+    switch (keyCode) {
+    case KeyEvent.KEYCODE_DPAD_CENTER:
+      if (isShowTVD) {
+        mAdPosTVDListener.open();
+      } else if (isShowTVC) {
+        mAdPosTVCListener.open();
+      }
+      break;
+    case KeyEvent.KEYCODE_BACK:
+      if ((System.currentTimeMillis() - mExitTime) > 2000) {
+        mExitTime = System.currentTimeMillis();
+        mIsDoubleClickKeyBack = false;
+      } else {
+        mIsDoubleClickKeyBack = true;
+      }
+      onClickKeyBack();
+      Lg.e("AdEpgPlayerController , onClickKeyBack() , traceLogTpye = " + mTraceLogTpye);
+      break;
+    }
+    return true;
+  }
+
+  private void onClickKeyBack() {
+    Lg.e("AdEpgPlayerController , onClickKeyBack()");
+
+    // 0.正在展示退出广告,不做任何动作等待退出广告倒计时完成
+    if (isShowExitAd) {
+      mTraceLogTpye = "0";
+      return;
+    }
+    // 1.loading广告,直接退出
+    if (isShowLoadingAd && mAdPosLoadingListener != null) {
+      mTraceLogTpye = "1";
+      isShowLoadingAd = false;
+      mAdPosLoadingListener.stop();
+      isShowLoadingAd = false;
+      onStop();
+      onReset();
+      mAdPlayerUIController.onExit();
+      return;
+    }
+    // 2.前贴片(与浮层广告互斥),直接退出
+    if (isShowTVC && mAdPosTVCListener != null) {
+      mTraceLogTpye = "2";
+      isShowTVC = false;
+      mAdPosTVCListener.stop();
+      onStop();
+      onReset();
+      mAdPlayerUIController.onExit();
+      return;
+    }
+    // 3.中贴片播放并且有浮层广告时,退出浮层广告
+    if (isShowTVCMiddle && isShowTVD && mAdPosTVDListener != null) {
+      mTraceLogTpye = "3";
+      mAdPosTVDListener.stop();
+      isShowTVD = false;
+      return;
+    }
+    // 4.中贴片播放并且无浮层广告时,展示退出广告
+    if (isShowTVCMiddle && !isShowTVD) {
+      isShowTVCMiddle = false;
+      if (!isShowExitAd && mAdPosExitListener != null) {
+        mTraceLogTpye = "4.1";
+        mAdPosExitListener.show();
+      } else {
+        mTraceLogTpye = "4.2";
+        onStop();
+        onReset();
+        mAdPlayerUIController.onExit();
+      }
+      return;
+    }
+    // 5. 暂停广告在showing时(正片时)
+    if (isShowPauseAd) {
+      mTraceLogTpye = "5";
+      isShowPauseAd = false;
+      if (mAdPosPauseListener != null) {
+        mAdPosPauseListener.reset();
+      }
+      return;
+    }
+    // 6.正片在播放时时
+    if (!isShowLoadingAd && !isShowTVC && !isShowTVCMiddle && !isShowPauseAd) {
+      if (isShowTVD && mAdPosTVDListener != null) {
+        mTraceLogTpye = "6.1";
+        isShowTVD = false;
+        mAdPosTVDListener.stop();
+        return;
+      }
+      if (!isShowExitAd && mAdPosExitListener != null) {
+        if ((VAdSDK.getInstance().isDoubleExit() && mIsDoubleClickKeyBack) || !VAdSDK.getInstance().isDoubleExit()) {
+          isShowExitAd = true;
+          mTraceLogTpye = "6.2";
+          mAdPosExitListener.show();
+        }
+        if (VAdSDK.getInstance().isDoubleExit() && !mIsDoubleClickKeyBack) {
+          Toast.makeText(mContext, "再按一次退出", Toast.LENGTH_SHORT).show();
+        }
+        return;
+      }
+    }
+    // 9999.在不属于上面任何情况的时候直接退出
+    mTraceLogTpye = "9999";
+    if ((VAdSDK.getInstance().isDoubleExit() && mIsDoubleClickKeyBack) || !VAdSDK.getInstance().isDoubleExit()) {
+      onStop();
+      onReset();
+      mAdPlayerUIController.onExit();
+    }
+    if (VAdSDK.getInstance().isDoubleExit() && !mIsDoubleClickKeyBack) {
+      Toast.makeText(mContext, "再按一次退出", Toast.LENGTH_SHORT).show();
+    }
+  }
+
+  private void createTimer() {
+    mTimer = new Timer();
+    mTimerTask = new TimerTask() {
+      @Override
+      public void run() {
+        // Lg.d("AdEpgPlayerController , createTimer()#TimerTask.run()");
+        if (mAdPlayer != null) {
+          // FIXME(ljs):这个时间在第二个前列片播放时返回的时间不对,StandardPlayer.su_originalGetCurrentPosition()
+          // FIXME(ljs):在测试中MediaPlayer.getCurrentPosition()跳秒现象
+          int originalCurrentPosition = mAdPlayer.originalGetCurrentPosition();
+          Lg.d("AdEpgPlayerController , TimerTask#run() , mediaPlayer original position = " + originalCurrentPosition);
+          mMediaPlayerCurrentPosition = originalCurrentPosition / 1000;
+          Lg.d("AdEpgPlayerController , TimerTask#run() , mediaPlayer position(player) = " + mMediaPlayerCurrentPosition + " , TVC Ad allLength = " + mTVCAdAllLength);
+          mHandler.sendMessageDelayed(mHandler.obtainMessage(MSG_TVD_TIME_PRE, originalCurrentPosition), 1000);
+          if (mMediaPlayerCurrentPosition <= mTVCAdAllLength && mMediaPlayerCurrentPosition >= 0) {// NOTE(ljs):播放前贴片
+            if (mAdPosTVCListener != null) {
+              Message message = Message.obtain();
+              message.what = MSG_TCV_SHOWING;
+              message.obj = "msg_tcv_showing";
+              message.arg1 = mMediaPlayerCurrentPosition;
+              mHandler.sendMessage(message);
+            }
+          } else if (mMediaPlayerCurrentPosition > mTVCAdAllLength) {// NOTE(ljs):正片或中贴片
+            if (mAdPosTVDListener != null) {
+              Message message = Message.obtain();
+              message.what = MSG_TVD_SHOWING;
+              message.obj = "msg_tvd_showing";
+              message.arg1 = mMediaPlayerCurrentPosition;
+              mHandler.sendMessage(message);
+            }
+            if (isShowTVC == true) {
+              if (mAdPosTVCListener != null) {
+                Message message = Message.obtain();
+                message.what = MSG_TCV_SHOW_END;
+                message.obj = "msg_tcv_show_end";
+                message.arg1 = mMediaPlayerCurrentPosition;
+                mHandler.sendMessage(message);
+              }
+            }
+            if (mSlices.size() == 1) {// 无中贴片
+              Message message = Message.obtain();
+              message.what = MSG_MOVIE_SHOW;
+              message.obj = "msg_movie_show";
+              message.arg1 = mMediaPlayerCurrentPosition;
+              mHandler.sendMessage(message);
+            } else { // 有中贴片
+              for (Slice slice : mSlices) {
+                if (mMediaPlayerCurrentPosition >= slice.mStartTime && mMediaPlayerCurrentPosition <= slice.mEndTime) {
+                  if (slice.mIsTVCMiddle) {
+                    Message message = Message.obtain();
+                    message.what = MSG_TVC_MIDDLE_SHOW;
+                    message.obj = "msg_tvc_middle_show";
+                    message.arg1 = mMediaPlayerCurrentPosition;
+                    mHandler.sendMessage(message);
+                  } else {
+                    Message message = Message.obtain();
+                    message.what = MSG_MOVIE_SHOW;
+                    message.obj = "msg_movie_show";
+                    message.arg1 = mMediaPlayerCurrentPosition;
+                    mHandler.sendMessage(message);
+                  }
+                }
+                if (mMediaPlayerCurrentPosition >= slice.mStartTime && slice.mEndTime == -1 && !slice.mIsTVCMiddle) {
+                  Message message = Message.obtain();
+                  message.what = MSG_MOVIE_SHOW;
+                  message.obj = "msg_movie_show";
+                  message.arg1 = mMediaPlayerCurrentPosition;
+                  mHandler.sendMessage(message);
+                }
+              }
+            }
+          }
+        }
+      }
+    };
+  }
+
+  @Override
+  public void onCompletion(Runnable appListenerTask) {
+    Lg.e("AdEpgPlayerController , onCompletion()");
+    if (mTimer != null) {
+      mTimer.cancel();
+      mTimer = null;
+      mTimerTask = null;
+    }
+    super.onCompletion(appListenerTask);
+  }
+
+  @Override
+  public boolean onInfo(int what, int extra) {
+    Lg.e("AdEpgPlayerController , onInfo() , what = " + what + " , extra = " + extra);
+    switch (what) {
+    case MediaPlayer.MEDIA_INFO_BUFFERING_START:
+      // NOTE(ljs):701,MediaPlayer暂停播放等待缓冲更多数据
+      if (isShowTVC) {
+        mAdPosTVCListener.setTVCPause(true);
+      }
+
+      break;
+    case MediaPlayer.MEDIA_INFO_BUFFERING_END:
+      // NOTE(ljs):702,MediaPlayer在缓冲完后继续播放
+      if (isShowTVC) {
+        mAdPosTVCListener.setTVCPause(false);
+      }
+      break;
+    default:
+      break;
+    }
+    return true;
+  }
+}

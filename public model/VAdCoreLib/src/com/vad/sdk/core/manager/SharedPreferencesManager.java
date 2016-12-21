@@ -1,0 +1,74 @@
+package com.vad.sdk.core.manager;
+
+import com.vad.sdk.core.Utils.v30.Lg;
+
+import android.content.Context;
+
+/**
+ * Copyright 2012 YunRang Technology Co. Ltd., Inc. All rights reserved.
+ *
+ * @Author : junfengli
+ * @Description : SharedPreferencesManager is used to manager write and read SharedPreferences
+ *              value,
+ */
+
+public class SharedPreferencesManager {
+  private static Context sContext = null;
+  private static SharedPreferencesManager sInstance = null;
+
+  public static void createInstance(Context context) {
+    if (sInstance == null) {
+      sInstance = new SharedPreferencesManager(context);
+      Lg.d("SharedPreferencesManager , createInstance()");
+    }
+  }
+
+  private SharedPreferencesManager(Context context) {
+    sContext = context;
+  }
+
+  public static boolean getBoolean(String name, String key, boolean defValue) {
+    // sLogger.d("getBoolean() : name = " + name + " : key = " + key + " : defValue = " + defValue);
+    if (sInstance != null && sContext != null) {
+      return sContext.getSharedPreferences(name, Context.MODE_PRIVATE).getBoolean(key, defValue);
+    }
+    return defValue;
+  }
+
+  public static String getString(String name, String key, String defValue) {
+    // sLogger.d("getString() : name = " + name + " : key = " + key + " : defValue = " + defValue);
+    if (sInstance != null && sContext != null) {
+      return sContext.getSharedPreferences(name, Context.MODE_PRIVATE).getString(key, defValue);
+    }
+    return defValue;
+  }
+
+  public static int getInt(String name, String key, int defValue) {
+    // sLogger.d("getInt() : name = " + name + " : key = " + key + " : defValue = " + defValue);
+    if (sInstance != null && sContext != null) {
+      return sContext.getSharedPreferences(name, Context.MODE_PRIVATE).getInt(key, defValue);
+    }
+    return defValue;
+  }
+
+  public static void putInt(String name, String key, int value) {
+    // sLogger.d("putInt() : name = " + name + " : key = " + key + " : value = " + value);
+    if (sInstance != null && sContext != null) {
+      sContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().putInt(key, value).apply();
+    }
+  }
+
+  public static void putBoolean(String name, String key, boolean value) {
+    // sLogger.d("putBoolean() : name = " + name + " : key = " + key + " : defValue = " + value);
+    if (sInstance != null && sContext != null) {
+      sContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().putBoolean(key, value).apply();
+    }
+  }
+
+  public static void putString(String name, String key, String value) {
+    // sLogger.d("putString() : name = " + name + " : key = " + key + " : defValue = " + value);
+    if (sInstance != null && sContext != null) {
+      sContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().putString(key, value).apply();
+    }
+  }
+}

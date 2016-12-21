@@ -1,0 +1,8 @@
+<resources>
+	<dimen name="CHANNEL_CODE_SIZE">48px</dimen>
+	<dimen name="CHANNEL_INFO_NAME_SIZE">30px</dimen>
+	<dimen name="CHANNEL_INFO_NEXTPLAY_SIZE">22px</dimen>
+	<dimen name="TIMER_SIZE">18px</dimen>
+	<dimen name="BACK_SIZE">24px</dimen>
+	<dimen name="BACKTIMER_SIZE">20px</dimen>
+</resources>

@@ -1,0 +1,399 @@
+package com.voole.player.lib.core.report;
+
+import java.util.Random;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import android.content.Context;
+import android.util.DisplayMetrics;
+
+import com.gntv.tv.common.ap.AuthManager;
+import com.gntv.tv.common.ap.UrlList;
+import com.gntv.tv.common.ap.UrlMap;
+import com.gntv.tv.common.utils.LogUtil;
+import com.google.gson.Gson;
+import com.voole.player.lib.core.interfaces.IPlayReport;
+import com.voole.statistics.report.ReportManager;
+
+public abstract class BaseReport implements IPlayReport{
+	/**
+	 * 统计版本
+	 */
+//	private static final String VERSION = "3.1"; 
+	private static final String MAP_PLAYREPORT = "playReport"; 
+	private String mBaseUrl = null;
+	private long mSessionid;
+	private String mAuthCode;
+	private int mSeqno = 0;
+	private int mWidth;
+	private int mHeight;
+	private int mDpi;
+	//记录上一次状态汇报的系统时间和playtime，以便在心跳汇报时正确计算出当前的playtime
+	private long mLastReportStateSystemTime = 0;
+	private String mLastReportStatePlayTime = null;
+	private boolean isLeLive = false;
+	
+	/**
+	 * 直播会话的三种类型
+	 * 0首次启动 
+	 * 1切台 
+	 * 2时移
+	 */
+	protected enum SessionType{
+		FIRST_START("0"),CHANNEL_SWITCH("1"),TIME_SHIFT("2");
+		private String type = "0";
+		private SessionType(String type){
+			this.type = type;
+		}
+		
+		@Override
+		public String toString() {
+			return type;
+		}
+	}
+	
+	/**
+	 * 直播播放状态类型
+	 * 1 错误
+	 * 2 准备播放
+	 * 3 播放开始
+	 * 7 缓冲开始
+	 * 8 缓冲结束
+	 * 10 用户中止
+	 */
+	protected enum PlayStateType{
+		ERROR("1"),PREPARE("2"),PLAYSTART("3"),PLAYSTOP("4"),PAUSE("5"),RESUME("6"),BUFFERSTART("7"),BUFFEREND("8"),SEEK("9"),STOP("10"),RESETSTART("11"),RESETEND("12");
+		private String type = "0";
+		private PlayStateType(String type){
+			this.type = type;
+		}
+		
+		@Override
+		public String toString() {
+			return type;
+		}
+	}
+	
+	public abstract String getSessionAction();
+	public abstract String getPlayState();
+	public abstract String getReportVersion();
+	public abstract String getHeartBeatAction();
+	
+	@Override
+	public void initReport(Context context, String versionCode, String appid) {
+		mBaseUrl = getBaseReportUrl(context, appid, versionCode);
+		LogUtil.d("initReport-->mBaseUrl-->" + mBaseUrl);
+		DisplayMetrics displayMetrics = new DisplayMetrics();
+		displayMetrics = context.getResources().getDisplayMetrics();
+		mWidth = displayMetrics.widthPixels;
+		mHeight = displayMetrics.heightPixels;
+		mDpi = displayMetrics.densityDpi;
+		LogUtil.d("initReport-->mWidth-->" + mWidth);
+		LogUtil.d("initReport-->mHeight-->" + mHeight);
+		LogUtil.d("initReport-->mDpi-->" + mDpi);
+	}
+
+	@Override
+	public void notifyPlayAuthStart(String mid,  String fid, String epgid, String cpid, String cdnType, String channelId, String sTime, String eTime) {
+		
+	}
+	
+	@Override
+	public void notifyPlayAuthEnd(String playUrl, String authCode, int authTimeMsec) {
+		
+	}
+
+	@Override
+	public void notifyPrepare(String param) {
+		
+	}
+	
+	@Override
+	public void notifyOnPrePared(int durationMsec) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void notifyStart() {
+		
+	}
+
+	@Override
+	public void notifyPause(int currentPlayTimeMsec) {
+		// TODO Auto-generated method stub
+	}
+
+	@Override
+	public void notifyResume(int currentPlayTimeMsec) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void notifyBufferStart(int currentPlayTimeMsec) {
+	}
+
+	@Override
+	public void notifyBufferEnd(int currentPlayTimeMsec) {
+	}
+
+	@Override
+	public void notifySeek(int currentPlayTimeMsec, int seekToMsec) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void notifyStop(int currentPlayTimeMsec) {
+		LogUtil.d("BaseReport-->notifyStop-->");
+		stopPlayerTimer();
+	}
+
+	@Override
+	public void notifyCompletion(int currentPlayTimeMsec) {
+		LogUtil.d("BaseReport-->notifyCompletion-->");
+		stopPlayerTimer();
+	}
+
+	@Override
+	public void notifyError(int currentPlayTimeMsec) {
+		LogUtil.d("BaseReport-->notifyError-->");
+		stopPlayerTimer();
+	}
+	
+	/*@Override
+	public void notifyReset() {
+		stopPlayerTimer();
+	}*/
+	
+	@Override
+	public void notifyResetStart() {
+		stopPlayerTimer();
+	}
+	
+	@Override
+	public void notifyResetEnd() {
+		// TODO Auto-generated method stub
+		
+	}
+	
+	@Override
+	public void notifyRelease() {
+		stopPlayerTimer();
+	}
+	
+	protected void createSession(String authCode, ReportModel.Player player){
+		mSessionid = creatSessionId();
+		mSeqno = 0;
+		mAuthCode = authCode;
+		LogUtil.d("createSession-->mSessionid-->" + mSessionid);
+		LogUtil.d("createSession-->mSeqno-->" + mSeqno);
+		LogUtil.d("createSession-->mAuthCode-->" + mAuthCode);
+		
+		String action = getSessionAction();
+		LogUtil.d("createSession-->action-->" + action);
+		
+		String url = getActionReportBaseUrl(mBaseUrl, action);
+		
+		ReportModel model = new ReportModel();
+		model.setType(action);
+		model.setName("player");
+		player.setSessionid(mSessionid+"");
+		player.setWidth(mWidth + "");
+		player.setHeight(mHeight + "");
+		player.setDpi(mDpi + "");
+		player.setAuthcode(mAuthCode);
+		model.setPlayer(player);
+		String jsonStr = new Gson().toJson(model);
+		LogUtil.d("createSession--->create json end--->");
+		
+		doReport(url, jsonStr);
+		
+		stopPlayerTimer();
+		startPlayerTimer();
+	}
+	/**
+	 * 添加乐视直播判断，避免在创建会话时心跳汇报的playtime出错（点播playtime汇报视频的当前位置，直播汇报系统时间）
+	 * @param authCode
+	 * @param player
+	 * @param isLeLive
+	 */
+	protected void createSession(String authCode, ReportModel.Player player, boolean isLeLive){
+		this.isLeLive = isLeLive;
+		mSessionid = creatSessionId();
+		mSeqno = 0;
+		mAuthCode = authCode;
+		LogUtil.d("createSession-->mSessionid-->" + mSessionid);
+		LogUtil.d("createSession-->mSeqno-->" + mSeqno);
+		LogUtil.d("createSession-->mAuthCode-->" + mAuthCode);
+		
+		String action = getSessionAction();
+		LogUtil.d("createSession-->action-->" + action);
+		
+		String url = getActionReportBaseUrl(mBaseUrl, action);
+		
+		ReportModel model = new ReportModel();
+		model.setType(action);
+		model.setName("player");
+		player.setSessionid(mSessionid+"");
+		player.setWidth(mWidth + "");
+		player.setHeight(mHeight + "");
+		player.setDpi(mDpi + "");
+		player.setAuthcode(mAuthCode);
+		model.setPlayer(player);
+		String jsonStr = new Gson().toJson(model);
+		LogUtil.d("createSession--->create json end--->");
+		
+		doReport(url, jsonStr);
+		
+		stopPlayerTimer();
+		startPlayerTimer();
+	}
+	
+	private void reportHeartbeat(long playTime){
+//		final String action = "player_heartbeat";
+		String action = getHeartBeatAction();
+		String url = getActionReportBaseUrl(mBaseUrl, action);
+		
+		ReportModel model = new ReportModel();
+		model.setType(action);
+		model.setName("player");
+		ReportModel.Player player = new ReportModel.Player();
+		player.setSessionid(mSessionid+"");
+		player.setAuthcode(mAuthCode);
+//		player.setPlaytime(getCurrentTime());
+		player.setPlaytime(playTime + "");
+		model.setPlayer(player);
+		String jsonStr = new Gson().toJson(model);
+		LogUtil.d("reportHeartbeat-->url-->" + url);
+		LogUtil.d("reportHeartbeat-->jsonStr-->" + jsonStr);
+		
+		doReport(url, jsonStr);
+	}
+	
+	protected void reportState(ReportModel.Player player){
+		String action = getPlayState();
+		LogUtil.d("reportState-->action-->" + action);
+		String url = getActionReportBaseUrl(mBaseUrl, action);
+		
+		ReportModel model = new ReportModel();
+		model.setType(action);
+		model.setName("player");
+//		ReportModel.Player player = new ReportModel.Player();
+		player.setSessionid(mSessionid+"");
+		player.setSeqno(mSeqno + "");
+//		player.setState(state.toString());
+		player.setAuthcode(mAuthCode);
+		LogUtil.d("BaseReport->reportState, playtime = " + player.getPlaytime() + ", currentTime = " + getCurrentTime());
+		//点播汇报当前播放的位置，直播汇报系统时间
+		if (player.getPlaytime() != null) {
+			mLastReportStatePlayTime = player.getPlaytime();
+			mLastReportStateSystemTime = System.currentTimeMillis();
+		} else {
+			player.setPlaytime(getCurrentTime());
+		}
+		model.setPlayer(player);
+		String jsonStr = new Gson().toJson(model);
+		
+		LogUtil.d("reportState-->url-->" + url);
+		LogUtil.d("reportState-->jsonStr-->" + jsonStr);
+		
+		mSeqno ++;
+		
+		doReport(url, jsonStr);
+	}
+
+	private String getBaseReportUrl(Context context, String appId, String versionCode){
+//		String reportUrl = AuthManager.GetInstance().getUrlList().getPlayReport();
+//		reportUrl = reportUrl.replaceFirst("al.globenetworktv.com", "172.16.10.113:8083");
+		//UrlMap urlMap = AuthManager.GetInstance().getUrlMap();
+		UrlList urlList = AuthManager.GetInstance().getUrlList();
+		if(urlList != null){
+			String reportUrl = urlList.getPlayReport();
+			StringBuilder sb = new StringBuilder();
+			sb.append(reportUrl);
+			sb.append("&");
+			sb.append("packagename=" + context.getPackageName());
+			sb.append("&");
+			sb.append("appid=" + appId);
+			sb.append("&");
+			sb.append("appversion=" + versionCode);
+			/*sb.append("&");
+			sb.append("stamp=" + System.currentTimeMillis());*/
+			sb.append("&");
+			sb.append("version=" + getReportVersion());
+			return sb.toString();
+		}
+		return "";
+	}
+	
+	private String getActionReportBaseUrl(String baseUrl, String action){
+		StringBuffer sb = new StringBuffer();
+		sb.append(baseUrl);
+		sb.append("&action="+action);
+		return sb.toString();
+	}
+	
+	private long creatSessionId(){
+		long curTime = System.currentTimeMillis() ;
+		Random random = new Random() ;
+		int randomInt = random.nextInt(10000000) ;
+		String hid = AuthManager.GetInstance().getUser().getHid();
+		return (curTime+""+randomInt+hid).hashCode() ;
+	}
+	
+	private String getCurrentTime(){
+		return "" + System.currentTimeMillis() / 1000;
+	}
+	
+	private void doReport(String url, String param){
+//		ReportManager.getInstance().reportPlayer(url + "&stamp=" + System.currentTimeMillis(), param);
+		ReportManager.getInstance().doPostReport(url + "&stamp=" + System.currentTimeMillis(), param);
+	}
+	
+	private Timer mTimer = null;
+	private TimerTask mTimerTask = null;
+	private static final int TIME_PERIOD = 1000 * 60;
+	
+	private void startPlayerTimer() {
+		if (mTimer == null) {
+			mTimer = new Timer();
+		}
+		if (mTimerTask == null) {
+			mTimerTask = new TimerTask() {
+				@Override
+				public void run() {
+					long playTime = 0;
+					long currentTime = System.currentTimeMillis();
+					//mLastReportStatePlayTime不为空或isLeLive不为true，则视频为点播视频，反之为乐视直播视频.点播汇报视频当前播放位置，直播汇报系统时间
+					if (mLastReportStatePlayTime != null && mLastReportStateSystemTime != 0) {
+						playTime = (currentTime - mLastReportStateSystemTime) / 1000 + Integer.parseInt(mLastReportStatePlayTime);
+						LogUtil.d("BaseReport->startPlayerTimer, mLastReportStateSystemTime = " + mLastReportStateSystemTime +
+								", mLastReportStatePlayTime ＝ " + mLastReportStatePlayTime + ", currentTime = " + currentTime + 
+								", playTime = " + playTime);
+						mLastReportStatePlayTime = playTime + "";
+						mLastReportStateSystemTime = currentTime;
+					} else if (isLeLive) {
+						playTime = currentTime / 1000;
+					}
+					reportHeartbeat(playTime);
+				}
+			};
+			mTimer.schedule(mTimerTask, 0, TIME_PERIOD);
+		}
+	}
+
+	private void stopPlayerTimer() {
+		if (mTimer != null) {
+			mTimer.cancel();
+			mTimer = null;
+		}
+
+		if (mTimerTask != null) {
+			mTimerTask.cancel();
+			mTimerTask = null;
+		}
+	}
+	
+}

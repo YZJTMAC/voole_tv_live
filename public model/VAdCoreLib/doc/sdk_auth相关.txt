@@ -1,0 +1,27 @@
+1.关于auth简介
+    Auth模块是优朋普乐提供给互联网电视厂商、机顶盒厂商等进行终端认证管理的基本功能模块。
+    它主要负责建立终端的首次开机激活认证，用户会话管理，动态EPG获取，节目播放认证计费和播放状态管理控制体系。
+    Auth模块是一个独立的后台进程运行在终端系统中供EPG访问.
+
+2.功能介绍
+    2.1.动态入口地址及用户信息获取
+        接口:http://[机顶盒的ip]:18080/user
+        接口数据:
+            <user slick-uniqueid="3">
+              <div><a id="slick_uniqueid"/></div>
+              <status>0</status>
+              <uid>132217053</uid>
+              <hid>6488FF0FBD89</hid>
+              <oemid>100145</oemid>
+              <portal>http://authentry.voole.com/entry</portal>
+              <version>21.0</version>
+              <buildtime>Oct 11 2014 11:14:16</buildtime>
+             </user>
+        
+    2.2.播放查询
+    2.3.m3u8鉴权
+    2.4.鉴权串获取
+3.机制与原理
+    详见/Users/luojunsheng/company/3优朋项目/auth 认证/第20讲认证模块流程及内部架构讲解.ppt
+4.
+5.

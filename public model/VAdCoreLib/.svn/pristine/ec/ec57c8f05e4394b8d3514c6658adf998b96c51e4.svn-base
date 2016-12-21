@@ -1,0 +1,35 @@
+package com.vad.sdk.core.base.interfaces;
+
+import java.util.Map;
+
+/**
+ * 广告业务接口，由适配层拦截播放器调用事件，调用本接口实例方法触发广告业务；
+ *
+ * @author Administrator
+ *
+ */
+public interface IAdPlayerOperationHandler {
+
+  public void onPrepare(String adXml, Map<String, String> extMaps);
+
+  public void onStart(int pos);
+
+  public void onStart();
+
+  public void onPause();
+
+  public void onStop();
+
+  public void onSeek(int pos);
+
+  public void onReset();
+
+  // public void onRelease();
+
+  public int getDuration();
+
+  public int getCurrentPosition();
+
+  public boolean onKeyDown(int keyCode);
+
+}

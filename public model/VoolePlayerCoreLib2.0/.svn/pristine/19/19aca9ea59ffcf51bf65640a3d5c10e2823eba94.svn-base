@@ -1,0 +1,891 @@
+package com.voole.player.lib.core;
+
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.util.HashMap;
+import java.util.Map;
+
+import android.content.Context;
+import android.os.AsyncTask;
+import android.text.TextUtils;
+import android.util.AttributeSet;
+import android.util.Base64;
+import android.widget.RelativeLayout;
+
+import com.gntv.tv.common.ap.Ad;
+import com.gntv.tv.common.ap.AuthManager;
+import com.gntv.tv.common.ap.ProxyManager;
+import com.gntv.tv.common.utils.LogUtil;
+import com.vad.sdk.core.VAdSDK;
+import com.voole.player.lib.core.VoolePlayerFactory.PlayerType;
+import com.voole.player.lib.core.interfaces.IPlayReport;
+import com.voole.player.lib.core.interfaces.IPlayer;
+import com.voole.player.lib.core.interfaces.IPlayer.Status;
+
+public class VooleMediaPlayer extends RelativeLayout{
+	private static final String LIVE_PLAY_URL_VERSION = "2.0";
+	private static final String LIVE_AUTH_INTERFACE_VERSION = "3.0";
+	private static final String EPG_PLAY_URL_VERSION = "";
+	private static final String EPG_AUTH_INTERFACE_VERSION = "";
+	private static final String EPG_PLAY_URL_VERSION_LETV = "";
+	private static final String EPG_AUTH_INTERFACE_VERSION_LETV = "1.0";
+	private static final String FILM_PLAY_URL_VERSION = "2.0";
+	private static final String FILM_AUTH_INTERFACE_VERSION = "5.0";
+	private static final String CP_TYPE_SOHU = "2";
+	private static final String CP_TYPE_LETV = "3";
+
+	public enum PlayType{
+		Preview,
+		ChargePlay
+	}
+	
+	private static final int PLAY_AUTH_ERROR = -1001;
+	
+	public static final String ERROR_PLAYER = "0194100001";
+	public static final String ERROR_PLAY_AUTH_FAIL = "0191100007";
+	public static final String ERROR_PLAY_AUTH_ERROR = "0191100008";
+	
+	private String mMid = null;
+	private String mSid = null;
+	private String mFid = null;
+	private String mPid = null;
+	private String mPtype = null;
+	private String mDownUrl = null;
+	private String mMtype = null;
+	private String mAdCache = null;
+	private String mIspid = null;
+	private String mCoderate = null;
+	private String mMediumtype = null;
+	private String mEpgid = null;
+	private String mCpid = null;
+	private String mCdnType = null;
+	private String mAdversion = null;
+	private String mStoreType = null;
+	private String mAdurl = null;
+	private String mPlayUrlVersion = null;
+	private String mAuthInterfaceVersion = null;
+	private String mIs3rd = null;
+	private String mTracker = null;
+	private String mBkeUrl = null;
+	private String mDataType = null;
+	private String mProto = null;
+	private String mResourceId = null;
+	private PlayType mChargeType = PlayType.Preview;
+	private String mMpb = null;
+	private String mJumpPlay = null;
+	
+	private String apkVersionCode = "0";
+	private String appid = "-1";
+	
+	private Map<String, String> mExtMap = null;
+	
+	private Context mContext = null;
+	
+	public VooleMediaPlayer(Context context, AttributeSet attrs, int defStyle) {
+		super(context, attrs, defStyle);
+		init(context);
+	}
+
+	public VooleMediaPlayer(Context context, AttributeSet attrs) {
+		super(context, attrs);
+		init(context);
+	}
+
+	public VooleMediaPlayer(Context context) {
+		super(context);
+		init(context);
+	}
+	
+	private void init(Context context){
+		this.mContext = context;
+	}
+
+	
+//	private String mCurrentCdnType = null;
+
+	
+	/*public void initPlayer(String param, VooleMediaPlayerListener l, IAdUIController adUIController){
+		mPlayer = VoolePlayerFactory.getPlayer(param);
+		mPlayer.initPlayer(param, adUIController, this, mContext, l);
+	}*/
+	
+	private PlayerType mCurrentPlayerType = null;
+	private PlayerType mPlayerType = null;
+	private GetUrlTask mGetUrlTask = null;
+	private GetUrlTask40 mGetUrlTask40 = null;
+	
+	private IPlayer mPlayer = null;
+	private IPlayReport mReport = null;
+	private VooleMediaPlayerListener mVooleMediaPlayerListener = null;
+	public void setMediaPlayerListener(VooleMediaPlayerListener l){
+		this.mVooleMediaPlayerListener = l;
+	}
+	
+	public void setApkVersionCode(String apkVersionCode) {
+		this.apkVersionCode = apkVersionCode;
+	}
+
+	public void setAppid(String appid) {
+		this.appid = appid;
+	}
+
+	public void prepareNormal(String url){
+		setPlayerType(PlayerType.NORMAL);
+		prepare(url);
+	}
+	
+	public void prepareEpgXml(String adxml, String mid, String fid, String epgid, String cpid, String cdnType, int authTimeMsec){
+		setPlayerType(PlayerType.EPG_VOOLE);
+		if(mReport != null){
+    		mReport.notifyPlayAuthStart(mid, fid, epgid, cpid, cdnType, null, null, null);
+    		mReport.notifyPlayAuthEnd(null, null, authTimeMsec);
+    	}
+		prepare(adxml);
+	}
+	
+	public void prepareLiveXml(String adxml, String channelCode){
+		setPlayerType(PlayerType.LIVE_VOOLE);
+		if(mReport != null){
+    		mReport.notifyPlayAuthStart(null, null, null, null, null, channelCode, null, null);
+    	}
+		prepare(adxml);
+	}
+	
+	private void setPlayData(final String mid, final String sid, final String fid, final String pid, final String playtype,
+			final String downUrl, final String mtype, final String adCache, 
+			final String ispid, final String coderate, final String mediumtype, 
+			final String epgid, final String cpid, final String cdnType, 
+			final String adversion, final String storeType, final String adurl, 
+			final String playUrlVersion, final String authInterfaceVersion, 
+			final String is3rd,	final String tracker, final String bkeUrl, final String dataType, final String proto, final String resourceId,
+			final PlayType chargeType, final String mpb, final String jumpPlay){
+		mMid = mid;
+		mSid = sid;
+		mFid = fid;
+		mPid = pid;
+		mPtype = playtype;
+		mDownUrl = downUrl;
+		mMtype = mtype;
+		mAdCache = adCache;
+		mIspid = ispid;
+		mCoderate = coderate;
+		mMediumtype = mediumtype;
+		mEpgid = epgid;
+		mCpid = cpid;
+		mCdnType = cdnType;
+		mAdversion = adversion;
+		mStoreType = storeType;
+		mAdurl = adurl;
+		mPlayUrlVersion = playUrlVersion;
+		mAuthInterfaceVersion = authInterfaceVersion;
+		mIs3rd = is3rd;
+		mTracker = tracker;
+		mBkeUrl = bkeUrl;
+		mDataType = dataType;
+		mProto = proto;
+		mResourceId = resourceId;
+		mChargeType = chargeType;
+		mMpb = mpb;
+		mJumpPlay = jumpPlay;
+	}
+	
+	
+	private String m40aid = null;
+	private String m40mclassify = null;
+	private String m40sid = null;
+	private String m40msid = null;
+	private String m40mid = null;
+	private String m40pid = null;
+	private String m40playtype = null;
+	private String m40jumpplay = null;
+	private String m40channelCode = null;
+	private PlayType m40chargeType = null;
+	private String m40mtype = null;
+	private String m40Adversion = null;
+	private String m40Adurl = null;
+	private String m40PlayUrlVersion = null;
+	private String m40AuthInterfaceVersion = null;
+	
+	private void setPlayData40(String aid, String mclassify, String sid, String msid, String mid,
+			String pid, String playtype, String jumpplay, String channelCode, PlayType chargeType, String mtype, String adversion, String adurl, String playUrlVersion, String authInterfaceVersion){
+		m40aid = aid;
+		m40mclassify = mclassify;
+		m40sid = sid;
+		m40msid = msid;
+		m40mid = mid;
+		m40pid = pid;
+		m40playtype = playtype;
+		m40jumpplay = jumpplay;
+		m40channelCode = channelCode;
+		m40chargeType = chargeType;
+		m40mtype = mtype;
+		m40Adversion = adversion;
+		m40Adurl = adurl;
+		m40PlayUrlVersion = playUrlVersion;
+		m40AuthInterfaceVersion = authInterfaceVersion;
+	}
+	
+	private void startGetUrlTask(){
+		if(!isGetUrlTaskRunning){
+			mGetUrlTask = new GetUrlTask();
+			mGetUrlTask.execute();
+		}
+	}
+	
+	private void startGetUrlTask40(){
+		if(!isGetUrlTaskRunning){
+			mGetUrlTask40 = new GetUrlTask40();
+			mGetUrlTask40.execute();
+		}
+	}
+	
+	public void prepare(final String mid, final String sid, final String fid, final String downUrl, final String mtype){
+		prepare(mid, sid, fid, null, null, downUrl, mtype, null, null, null, null, null, null, PlayType.Preview, null);
+	}
+	
+	public void prepare(final String mid, final String sid, final String fid, final String pid, final String playtype, final String downUrl, final String mtype){
+		prepare(mid, sid, fid, pid, playtype, downUrl, mtype, null, null, null, null, null, null, PlayType.Preview, null);
+	}
+	
+	public void prepare(final String mid, final String sid, final String fid, final String pid, final String playtype, final String downUrl, 
+			final String mtype, final String ispid, final String coderate, final String mediumtype, final String epgid, final String cpid, final String cdnType, 
+			final PlayType chargeType, final String jumpType){
+		final String adCache = "";
+//		final String adversion = "1.4.0";
+		String authInterfaceVersion = EPG_AUTH_INTERFACE_VERSION;
+		String epgPlayUrlVersion = EPG_PLAY_URL_VERSION;
+		if(CP_TYPE_SOHU.equals(cdnType)){
+			setPlayerType(PlayerType.EPG_SOHU);
+		}else if(CP_TYPE_LETV.equals(cdnType)){
+			epgPlayUrlVersion = EPG_PLAY_URL_VERSION_LETV;
+			authInterfaceVersion = EPG_AUTH_INTERFACE_VERSION_LETV;
+			setPlayerType(PlayerType.EPG_LETV);
+		}else{
+			setPlayerType(PlayerType.EPG_VOOLE);
+		}
+		final String adversion = VAdSDK.getInstance().getAdVersion();
+    	LogUtil.d("prepare-->adversion-->" + adversion);
+    	String adurl = "";
+    	if(CP_TYPE_SOHU.equals(cdnType) || CP_TYPE_LETV.equals(cdnType)){
+    		adurl = VAdSDK.getInstance().getEpgAdRequestUrl(mid, fid, "", mtype, false);
+		}else{
+			adurl = VAdSDK.getInstance().getEpgAdRequestUrl(mid, fid, "", mtype);
+		}
+    	LogUtil.d("prepare-->adurl-->" + adurl);
+    	if(mReport != null){
+    		mReport.notifyPlayAuthStart(mid, fid, epgid, cpid, cdnType, null, null, null);
+    	}
+    	setPlayData(mid, sid, fid, pid, playtype, downUrl, mediumtype, adCache, ispid, coderate, mediumtype, epgid, cpid, cdnType, adversion, null, adurl, epgPlayUrlVersion, authInterfaceVersion, "", "", "", "", "", "", chargeType, "", jumpType);
+    	startGetUrlTask();
+//		mGetUrlTask = new GetUrlTask();
+//		mGetUrlTask.execute(mid, sid, fid, pid, playtype, downUrl, mtype, adCache, ispid, coderate, mediumtype, epgid, cpid, cdnType, adversion, null, adurl, "", "");
+	}
+	
+	public void prepareFilm(String aid, String mclassify, String sid, String msid, String mid,
+			String pid, String playtype, String jumpplay, String channelCode, PlayType chargeType, String mtype, String epgid){
+		String authInterfaceVersion = FILM_AUTH_INTERFACE_VERSION;
+		String epgPlayUrlVersion = FILM_PLAY_URL_VERSION;
+		setPlayerType(PlayerType.FILM_VOOLE);
+		final String adversion = VAdSDK.getInstance().getAdVersion();
+    	LogUtil.d("prepareFilm-->adversion-->" + adversion);
+    	String adurl = VAdSDK.getInstance().getEpgAdRequestUrl(aid, mid, channelCode, mtype);
+    	LogUtil.d("prepareFilm-->adurl-->" + adurl);
+    	if(mReport != null){
+    		mReport.notifyPlayAuthStart(aid, mclassify, epgid, pid, null, null, null, null);
+    	}
+    	setPlayData40(aid, mclassify, sid, msid, mid, pid, playtype, jumpplay, channelCode, chargeType, mtype, adversion, adurl, epgPlayUrlVersion, authInterfaceVersion);
+    	startGetUrlTask40();
+	}
+	
+	public void prepareLive(final String channelCode, final String channelType, final String channelName, final String is3rd, final String tracker, final String bkeUrl, final String dataType, final String proto){
+		final String adversion = VAdSDK.getInstance().getAdVersion();
+    	LogUtil.d("prepareLive-->adversion-->" + adversion);
+		final String adurl = VAdSDK.getInstance().getLiveAdRequestUrl("", "", "", "");
+    	LogUtil.d("prepareLive-->adurl-->" + adurl);
+		prepareLive(channelCode, channelType,channelName, adversion, adurl, LIVE_PLAY_URL_VERSION, LIVE_AUTH_INTERFACE_VERSION, is3rd, tracker, bkeUrl, dataType, proto);
+	}
+	
+	public void prepareLive(final String channelCode, final String channelType, final String channelName, final String adversion, final String adurl, final String playUrlVersion, final String authInterfaceVersion,
+			final String is3rd, final String tracker, final String bkeUrl, final String dataType, final String proto){
+		setPlayerType(PlayerType.LIVE_VOOLE);
+		String mid = "1";
+		String sid = "1";
+		String fid = "";
+		try {
+			fid = URLEncoder.encode(channelCode + "_" + channelName, "UTF-8");
+		} catch (UnsupportedEncodingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		String pid = "1";
+		String playtype = "1000";
+    	if(mReport != null){
+    		mReport.notifyStop(0);
+    		mReport.notifyPlayAuthStart(null, null, null, null, null, channelCode, null, null);
+    	}
+    	mExtMap = new HashMap<String, String>();
+    	mExtMap.put("channelCode", channelCode);
+    	mExtMap.put("channelType", channelType);
+//		mGetUrlTask = new GetUrlTask();
+//		mGetUrlTask.execute(mid, sid, fid, pid, playtype, null, null, null, null, null, null, null, null, null, adversion, null, adurl, playUrlVersion, authInterfaceVersion);
+    	setPlayData(mid, sid, fid, pid, playtype, null, null, null, null, null, null, null, null, null, adversion, null, adurl, 
+    			playUrlVersion, authInterfaceVersion, is3rd, tracker, bkeUrl, dataType, proto, channelName, PlayType.Preview, "", null);
+    	startGetUrlTask();
+	}
+	
+	public void prepareTimeShift(final String channelCode, final String channelName, final String stime){
+		setPlayerType(PlayerType.LIVE_VOOLE);
+		String mid = "1";
+		String sid = "1";
+		String fid = "";
+		try {
+			fid = URLEncoder.encode(channelCode + "_" + channelName, "UTF-8");
+		} catch (UnsupportedEncodingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		String pid = "1";
+		String playtype = "1100";
+		String downUrl = "stime=" + stime +  "&ext=oid:" +  AuthManager.GetInstance().getUser().getOemid();
+		String downUrlBase64 = Base64.encodeToString(downUrl.getBytes(), Base64.NO_WRAP);
+//		mGetUrlTask = new GetUrlTask();
+//		mGetUrlTask.execute(mid, sid, fid, pid, playtype, downUrlBase64, null, null, null, null, null, null, null, null, null, null, null, "2.0", "3.0");
+		setPlayData(mid, sid, fid, pid, playtype, downUrlBase64, null, null, null, null, null, null, null, null, null, null, null, LIVE_PLAY_URL_VERSION, LIVE_AUTH_INTERFACE_VERSION, "", "", "", "", "", "", PlayType.Preview, "", null);
+		startGetUrlTask();
+	}
+	
+	public void preparePlayBack(final String channelCode, final String channelName, final String stime, final String etime){
+		preparePlayBack(channelCode, channelName, stime, etime, false);
+	}
+	
+	public void preparePlayBack(final String channelCode, final String channelName, final String stime, final String etime, final boolean isMpb){
+		setPlayerType(PlayerType.PLAYBACK_VOOLE);
+		String mid = "1";
+		String sid = "1";
+		String fid = "";
+		try {
+			fid = URLEncoder.encode(channelCode + "_" + channelName, "UTF-8");
+		} catch (UnsupportedEncodingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		String pid = "1";
+		String playtype = "1500";
+		String downUrl =  "stime=" + stime + "&etime=" + etime + "&ext=oid:" + AuthManager.GetInstance().getUser().getOemid();
+		String downUrlBase64 = Base64.encodeToString(downUrl.getBytes(), Base64.NO_WRAP);
+    	if(mReport != null){
+    		mReport.notifyPlayAuthStart(null, null, null, null, null, channelCode, stime, etime);
+    	}
+//		mGetUrlTask = new GetUrlTask();
+//		mGetUrlTask.execute(mid, sid, fid, pid, playtype, downUrlBase64, null, null, null, null, null, null, null, null, null, null, null, "2.0", "3.0");
+		setPlayData(mid, sid, fid, pid, playtype, downUrlBase64, null, null, null, null, null, null, null, null, null, null, null, LIVE_PLAY_URL_VERSION, LIVE_AUTH_INTERFACE_VERSION, "", "", "", "", "", "", PlayType.Preview, isMpb? "1": "", null);
+		startGetUrlTask();
+	}
+	
+	private String changeDownUrlToCharge(String downUrl){
+		byte[] b1 = Base64.decode(downUrl, Base64.DEFAULT);
+		String str1 = new String(b1);
+		String str2 = str1 + "&time=1";
+		return Base64.encodeToString(str2.getBytes(), Base64.NO_WRAP);
+	}
+	
+	private boolean isGetUrlTaskRunning = false;
+	private class GetUrlTask extends AsyncTask<String, Integer, Ad> {  
+        @Override  
+        protected void onPreExecute() { 
+        	LogUtil.d("GetUrlTask-->onPreExecute"); 
+        	isGetUrlTaskRunning = true;
+        }  
+          
+        @Override  
+        protected Ad doInBackground(String... params) { 
+        	LogUtil.d("GetUrlTask-->doInBackground"); 
+        	isGetUrlTaskRunning = true;
+//        	ProxyManager.GetInstance().exitProxy();
+        	/*LogUtil.d("GetUrlTask-->ProxyManager.GetInstance().isProxyRunning()--->start"); 
+        	if(!ProxyManager.GetInstance().isProxyRunning()){
+        		ProxyManager.GetInstance().startProxy();
+        	}
+        	LogUtil.d("GetUrlTask-->ProxyManager.GetInstance().isProxyRunning()--->end"); */
+        	/*for(int i=0; i<20; i++){
+				if(ProxyManager.GetInstance().isProxyRunning()){
+					break;
+				}
+        	}*/
+        	Ad ad = null;
+        	String mid = mMid;
+        	String sid = mSid;
+        	String fid = mFid;
+        	String pid = mPid;
+        	String ptype = mPtype;
+        	String downUrl = mDownUrl;
+        	String mtype = mMtype;
+        	String adCache = mAdCache;
+        	String ispid = mIspid;
+        	String coderate = mCoderate;
+        	String mediumtype = mMediumtype;
+        	String epgid = mEpgid;
+        	String cpid = mCpid;
+        	String cdnType = mCdnType;
+        	String adversion = mAdversion;
+        	String storeType = mStoreType;
+        	String adurl = mAdurl;
+        	String playUrlVersion = mPlayUrlVersion;
+        	String authInterfaceVersion = mAuthInterfaceVersion;
+        	String is3rd = mIs3rd;
+        	String tracker = mTracker;
+        	String bkeUrl = mBkeUrl;
+        	String dataType = mDataType;
+        	String proto = mProto;
+        	String resourceId = mResourceId;
+        	PlayType chargeType = mChargeType;
+        	String mpb = mMpb;
+        	String jumpPlay = mJumpPlay;
+        	do {
+        		mid = mMid;
+            	sid = mSid;
+            	fid = mFid;
+            	pid = mPid;
+            	ptype = mPtype;
+            	downUrl = mDownUrl;
+            	mtype = mMtype;
+            	adCache = mAdCache;
+            	ispid = mIspid;
+            	coderate = mCoderate;
+            	mediumtype = mMediumtype;
+            	epgid = mEpgid;
+            	cpid = mCpid;
+            	cdnType = mCdnType;
+            	adversion = mAdversion;
+            	storeType = mStoreType;
+            	adurl = mAdurl;
+            	playUrlVersion = mPlayUrlVersion;
+            	authInterfaceVersion = mAuthInterfaceVersion;
+            	is3rd = mIs3rd;
+            	tracker = mTracker;
+            	bkeUrl = mBkeUrl;
+            	dataType = mDataType;
+            	proto = mProto;
+            	resourceId = mResourceId;
+            	chargeType = mChargeType;
+            	if(chargeType == PlayType.ChargePlay){
+        			downUrl = changeDownUrlToCharge(downUrl);
+        		}
+            	mpb = mMpb;
+            	jumpPlay = mJumpPlay;
+            	LogUtil.d("GetUrlTask--->start getplayurl"); 
+            	ad = AuthManager.GetInstance().getPlayUrl(mid, sid, fid, pid, ptype, downUrl, mtype, adCache, ispid, coderate, mediumtype, epgid, cpid, cdnType, adversion, storeType, adurl, 
+            			playUrlVersion, authInterfaceVersion, is3rd, tracker, bkeUrl, dataType, proto, resourceId, mpb, appid, jumpPlay);
+        		LogUtil.d("GetUrlTask-->fid-->" + fid);
+        		LogUtil.d("GetUrlTask-->mFid-->" + mFid);
+        	} while (!fid.equals(mFid));
+        	isGetUrlTaskRunning = false;
+        	if("1000".equals(ptype) && ad != null && "0".equals(ad.getStatus())){
+        		final String url = ad.getPlayUrl();
+        		new Thread(){
+        			public void run() {
+                		ProxyManager.GetInstance().preDownloadUrl(url);
+        			};
+        		}.start();
+        	}
+        	return ad;
+        }  
+          
+        @Override  
+        protected void onProgressUpdate(Integer... progresses) {  
+        	LogUtil.d("GetUrlTask-->onProgressUpdate");
+        }  
+          
+        @Override  
+        protected void onPostExecute(Ad result) {  
+        	LogUtil.d("GetUrlTask-->onPostExecute");
+        	isGetUrlTaskRunning = false;
+        	if(isCancelled()){
+            	LogUtil.d("GetUrlTask-->onPostExecute--->isCancelled-->$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+        	}else{
+            	prepare(result);
+        	}
+        }  
+          
+        @Override  
+        protected void onCancelled() {  
+        	isGetUrlTaskRunning = false;
+        	LogUtil.d("GetUrlTask-->onCancelled-->$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+        }  
+    }
+	
+	private class GetUrlTask40 extends AsyncTask<String, Integer, Ad> {  
+        @Override  
+        protected void onPreExecute() { 
+        	LogUtil.d("GetUrlTask40-->onPreExecute"); 
+        	isGetUrlTaskRunning = true;
+        }  
+          
+        @Override  
+        protected Ad doInBackground(String... params) { 
+        	LogUtil.d("GetUrlTask40-->doInBackground"); 
+        	isGetUrlTaskRunning = true;
+//        	ProxyManager.GetInstance().exitProxy();
+        	/*LogUtil.d("GetUrlTask-->ProxyManager.GetInstance().isProxyRunning()--->start"); 
+        	if(!ProxyManager.GetInstance().isProxyRunning()){
+        		ProxyManager.GetInstance().startProxy();
+        	}
+        	LogUtil.d("GetUrlTask-->ProxyManager.GetInstance().isProxyRunning()--->end"); */
+        	/*for(int i=0; i<20; i++){
+				if(ProxyManager.GetInstance().isProxyRunning()){
+					break;
+				}
+        	}*/
+        	Ad ad = null;
+        	String aid = m40aid;
+        	String mclassify = m40mclassify;
+        	String sid = m40sid;
+        	String msid = m40msid;
+        	String mid = m40mid;
+        	String pid = m40pid;
+        	String playtype = m40playtype;
+        	String jumpplay = m40jumpplay;
+        	String channelCode = m40channelCode;
+        	PlayType chargePlay = m40chargeType;
+//        	String mtype = m40mtype;
+        	String adversion = m40Adversion;
+        	String adurl = m40Adurl;
+        	String playUrlVersion = m40PlayUrlVersion;
+        	String authInterfaceVersion = m40AuthInterfaceVersion;
+        	do {
+        		aid = m40aid;
+        		mclassify = m40mclassify;
+        		sid = m40sid;
+        		msid = m40msid;
+        		mid = m40mid;
+        		pid = m40pid;
+        		playtype = m40playtype;
+        		jumpplay = m40jumpplay;
+        		channelCode = m40channelCode;
+//        		mtype = m40mtype;
+        		chargePlay = m40chargeType;
+        		String deduct = "";
+            	if(chargePlay == PlayType.ChargePlay){
+            		deduct = "1";
+        		}
+            	adversion = m40Adversion;
+            	adurl = m40Adurl;
+            	playUrlVersion = m40PlayUrlVersion;
+            	authInterfaceVersion = m40AuthInterfaceVersion;
+            	LogUtil.d("GetUrlTask40--->start getplayurl"); 
+            	ad = AuthManager.GetInstance().getPlayUrl40(aid, mclassify, sid, msid, mid, pid, playtype, adversion, adurl, playUrlVersion, authInterfaceVersion, pid, jumpplay, channelCode, deduct);
+        		LogUtil.d("GetUrlTask40-->mid-->" + mid);
+        		LogUtil.d("GetUrlTask40-->m40mid-->" + m40mid);
+        	} while (!msid.equals(m40msid));
+        	isGetUrlTaskRunning = false;
+        	return ad;
+        }  
+          
+        @Override  
+        protected void onProgressUpdate(Integer... progresses) {  
+        	LogUtil.d("GetUrlTask40-->onProgressUpdate");
+        }  
+          
+        @Override  
+        protected void onPostExecute(Ad result) {  
+        	LogUtil.d("GetUrlTask40-->onPostExecute");
+        	isGetUrlTaskRunning = false;
+        	if(isCancelled()){
+            	LogUtil.d("GetUrlTask40-->onPostExecute--->isCancelled-->$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+        	}else{
+            	prepare(result);
+        	}
+        }  
+          
+        @Override  
+        protected void onCancelled() {  
+        	isGetUrlTaskRunning = false;
+        	LogUtil.d("GetUrlTask40-->onCancelled-->$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+        }  
+    }
+	
+//	private class GetUrlTask extends AsyncTask<String, Integer, Ad> {  
+//        @Override  
+//        protected void onPreExecute() {
+//        	LogUtil.d("GetUrlTask-->onPreExecute-->onPreExecute");
+//        }  
+//          
+//        @Override  
+//        protected Ad doInBackground(String... params) {  
+//        	LogUtil.d("GetUrlTask-->doInBackground");
+//        	String mid = params[0];
+//        	LogUtil.d("GetUrlTask-->mid-->" + params[0]);
+//        	String sid = params[1];
+//        	LogUtil.d("GetUrlTask-->sid-->" + params[1]);
+//        	String fid = params[2];
+//        	LogUtil.d("GetUrlTask-->fid-->" + params[2]);
+//        	String pid = params[3];
+//        	LogUtil.d("GetUrlTask-->pid-->" + params[3]);
+//        	String playtype = params[4];
+//        	LogUtil.d("GetUrlTask-->playtype-->" + params[4]);
+//        	String downUrl = params[5];
+//        	LogUtil.d("GetUrlTask-->downUrl-->" + params[5]);
+//        	String mtype = params[6];
+//        	LogUtil.d("GetUrlTask-->mtype-->" + params[6]);
+//        	String adCache = params[7];
+//        	LogUtil.d("GetUrlTask-->adCache-->" + params[7]);
+//        	String ispid = params[8];
+//        	LogUtil.d("GetUrlTask-->ispid-->" + params[8]);
+//        	String coderate = params[9];
+//        	LogUtil.d("GetUrlTask-->coderate-->" + params[9]);
+//        	String mediumtype = params[10];
+//        	LogUtil.d("GetUrlTask-->mediumtype-->" + params[10]);
+//        	String epgid = params[11];
+//        	LogUtil.d("GetUrlTask-->epgid-->" + params[11]);
+//        	String cpid = params[12];
+//        	LogUtil.d("GetUrlTask-->cpid-->" + params[12]);
+//        	String cdnType = params[13];
+//        	LogUtil.d("GetUrlTask-->cdnType-->" + params[13]);
+//        	String adversion = params[14];
+//        	LogUtil.d("GetUrlTask-->adversion-->" + params[14]);
+//        	String storeType = params[15];
+//        	LogUtil.d("GetUrlTask-->storeType-->" + params[15]);
+//        	String adurl = params[16];
+//        	LogUtil.d("GetUrlTask-->adurl-->" + params[16]);
+//        	String playUrlVersion = params[17];
+//        	LogUtil.d("GetUrlTask-->playUrlVersion-->" + params[17]);
+//        	String authInterfaceVersion = params[18];
+//        	LogUtil.d("GetUrlTask-->authInterfaceVersion-->" + params[18]);
+//        	Ad ad = AuthManager.GetInstance().getPlayUrl(mid, sid, fid, pid, playtype, downUrl, mtype, adCache, ispid, coderate, mediumtype, epgid, cpid, cdnType, adversion, storeType, adurl, playUrlVersion, authInterfaceVersion);
+//        	/*if(ad != null && ad.getAdxml() != null){
+//        		return ad.getAdxml();
+//        	}
+//        	if(!ProxyManager.GetInstance().isProxyRunning()){
+//        		ProxyManager.GetInstance().startProxy();
+//        	}
+//        	return null;*/
+//        	
+//        	if(!ProxyManager.GetInstance().isProxyRunning()){
+//        		ProxyManager.GetInstance().startProxy();
+//        	}
+//        	
+//        	return ad;
+//        }  
+//          
+//        @Override  
+//        protected void onProgressUpdate(Integer... progresses) {  
+//        	LogUtil.d("GetUrlTask-->onProgressUpdate");
+//        }  
+//          
+//        @Override  
+//        protected void onPostExecute(Ad result) {  
+//        	LogUtil.d("GetUrlTask-->onPostExecute-->onPostExecute");
+//        	/*if(result != null){
+//            	prepare(result);
+//        	}*/
+//        	
+//        	prepare(result);
+//        }  
+//          
+//        @Override  
+//        protected void onCancelled() {  
+//        	LogUtil.d("GetUrlTask-->onCancelled");
+//        }  
+//    }
+	
+	private void setPlayerType(PlayerType type){
+		mPlayerType = type;
+		if(mReport == null || mCurrentPlayerType == null || mCurrentPlayerType != mPlayerType){
+			mReport = VoolePlayerFactory.getPlayReport(mPlayerType);
+			mReport.initReport(mContext, apkVersionCode, appid);
+		}
+	}
+	
+//	private void prepare(Ad ad){
+//		if(ad != null){
+//			if("0".equals(ad.getStatus())){
+//				prepare(ad.getAdxml());
+//			}else{
+//				if(mVooleMediaPlayerListener != null){
+//					mVooleMediaPlayerListener.onError(PLAY_AUTH_ERROR, PLAY_AUTH_ERROR, ERROR_PLAY_AUTH_ERROR, ad.getStatus(), ad.getResultDesc());
+//				}
+//			}
+//		}else{
+//			if(mVooleMediaPlayerListener != null){
+//				mVooleMediaPlayerListener.onError(PLAY_AUTH_ERROR, PLAY_AUTH_ERROR, ERROR_PLAY_AUTH_FAIL, "0000000000", "");
+//			}
+//		}
+//	}
+	
+	private void prepare(Ad ad){
+		if(ad != null){
+			if("0".equals(ad.getStatus()) || !TextUtils.isEmpty(ad.getPlayUrl())){
+				if(mReport != null){
+					mReport.notifyPlayAuthEnd(ad.getPlayUrl(), ad.getAuthCode(), -1);
+				}
+				prepare(ad.getAdxml());
+			}else{
+				if(mVooleMediaPlayerListener != null){
+					if(mPlayer==null || mPlayer.getCurrentStatus() == Status.IDLE){
+						mVooleMediaPlayerListener.onError(PLAY_AUTH_ERROR, PLAY_AUTH_ERROR, ERROR_PLAY_AUTH_ERROR, ad.getStatus(), ad.getResultDesc());
+					}
+				}
+			}
+		}else{
+        	LogUtil.d("prepare-->ad==null");
+			if(mVooleMediaPlayerListener != null){
+				if(mPlayer==null || mPlayer.getCurrentStatus() == Status.IDLE){
+					mVooleMediaPlayerListener.onError(PLAY_AUTH_ERROR, PLAY_AUTH_ERROR, ERROR_PLAY_AUTH_FAIL, "0000000000", "");
+				}
+			}
+		}
+	}
+	
+	private void prepare(String param){
+		initPlayer();
+		if(mPlayer != null){
+			mPlayer.prepare(param, mExtMap);
+		}
+	}
+	
+	private void initPlayer(){
+		if(mCurrentPlayerType == null || mCurrentPlayerType != mPlayerType){
+			if(mPlayer != null){
+				mPlayer.recycle();
+			}
+			this.removeAllViews();
+			mPlayer = VoolePlayerFactory.getPlayer(mPlayerType);
+			mPlayer.initPlayer(this, mContext, mVooleMediaPlayerListener, mReport);
+			mCurrentPlayerType = mPlayerType;
+		}
+	}
+	
+	/*private void initPlayer(PlayInfo playInfo){
+		String cdnType = "";
+		if(playInfo != null && playInfo.cdnType != null){
+			cdnType = playInfo.cdnType;
+		}
+		if(mCurrentCdnType == null || !mCurrentCdnType.equals(cdnType)){
+			if(mPlayer != null){
+				mPlayer.recycle();
+			}
+			this.removeAllViews();
+			mPlayer = VoolePlayerFactory.getPlayer(cdnType);
+			mPlayer.initPlayer(this, mContext, mVooleMediaPlayerListener);
+			mCurrentCdnType = cdnType;
+		}
+	}*/
+	
+	public void start(int msec){
+		if(mPlayer != null){
+			mPlayer.start(msec);
+		}
+	}
+	
+	public void seekTo(int msec){
+		if(mPlayer != null){
+			mPlayer.seekTo(msec);
+		}
+	}
+	
+	public void start(){
+		if(mPlayer != null){
+			mPlayer.start();
+		}
+	}
+	
+	public void pause(){
+		if(mPlayer != null){
+			mPlayer.pause();
+		}
+	}
+	
+	public void stop(){
+		if(mPlayer != null){
+			mPlayer.stop();
+		}
+	}
+	
+	public void setLooping(boolean looping){
+		if(mPlayer != null){
+			mPlayer.setLooping(looping);
+		}
+	}
+	
+	public void reset(){
+		/*if(mGetUrlTask != null){
+			mGetUrlTask.cancel(true);
+		}*/
+		if(mPlayer != null){
+			mPlayer.reset();
+		}
+	}
+	
+	public void release(){
+		if(mGetUrlTask != null){
+			mGetUrlTask.cancel(true);
+		}
+		if(mPlayer != null){
+			mPlayer.release();
+			mPlayer = null;
+			mReport = null;
+		}
+		mCurrentPlayerType = null;
+	}
+	
+	public int getCurrentPosition() {
+		if(mPlayer != null){
+			return mPlayer.getCurrentPosition();
+		}
+		return 0;
+	}
+
+	public int getDuration() {
+		if(mPlayer != null){
+			return mPlayer.getDuration();
+		}
+		return 0;
+	}
+	
+	public Status getCurrentStatus(){
+		if(mPlayer != null){
+			return mPlayer.getCurrentStatus();
+		}
+		return Status.IDLE;
+	}
+	
+	public boolean onKeyDown(int keyCode) {
+		if(mPlayer != null){
+			return mPlayer.onKeyDown(keyCode);
+		}
+		return false;
+	}
+	
+	public int getVideoHeight(){
+		if(mPlayer != null){
+			return mPlayer.getVideoHeight();
+		}
+		return 0;
+	}
+	
+	public int getVideoWidth(){
+		if(mPlayer != null){
+			return mPlayer.getVideoWidth();
+		}
+		return 0;
+	}
+	
+	public void setVolume(float leftVolume, float rightVolume){
+		if(mPlayer != null){
+			mPlayer.setVolume(leftVolume, rightVolume);
+		}
+	}
+	
+	public void setSurfaceHolderFixedSize(int width, int height){
+		if(mPlayer != null){
+			mPlayer.setSurfaceHolderFixedSize(width, height);
+		}
+	}
+	
+	public void changeVideoSize(boolean isFullScreen) {
+		if (mPlayer != null) {
+			mPlayer.changeVideoSize(isFullScreen);
+		}
+	}
+
+}

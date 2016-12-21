@@ -1,0 +1,106 @@
+<?xml version='1.0' encoding='utf-8' standalone='no'?>
+<MessageArray count="10" >
+
+    <Header
+        appId="200"
+        appName="优朋客户端"
+        appVersion="2.0"
+        hid="234fwewef"
+        oemid="435"
+        packageName="com.voole.debugTraceReport"
+        uid="100666" />
+
+    <Array>
+
+        <Message
+            createdTime="1393994231002"
+            type="PageBrowsing"
+            value="HomePage" >
+
+            <Body>
+<![CDATA[<?xml version='1.0' encoding='utf-8' standalone='no' ?><HomePage channelId="123456" channelCode="cate_sy_fqj_1372232718" page="1" pageSize="12" />]]></Body>
+        </Message>
+
+        <Message
+            createdTime="1393994231897"
+            type="PageBrowsing"
+            value="HomePage" >
+
+            <Body>
+<![CDATA[<?xml version='1.0' encoding='utf-8' standalone='no' ?><HomePage channelId="123456" channelCode="cate_sy_fqj_1372232718" page="1" pageSize="12" />]]></Body>
+        </Message>
+
+        <Message
+            createdTime="1393994232939"
+            type="PageBrowsing"
+            value="HomePage" >
+
+            <Body>
+<![CDATA[<?xml version='1.0' encoding='utf-8' standalone='no' ?><HomePage channelId="123456" channelCode="cate_sy_fqj_1372232718" page="1" pageSize="12" />]]></Body>
+        </Message>
+
+        <Message
+            createdTime="1393994233252"
+            type="PageBrowsing"
+            value="HomePage" >
+
+            <Body>
+<![CDATA[<?xml version='1.0' encoding='utf-8' standalone='no' ?><HomePage channelId="123456" channelCode="cate_sy_fqj_1372232718" page="1" pageSize="12" />]]></Body>
+        </Message>
+
+        <Message
+            createdTime="1393994233574"
+            type="PageBrowsing"
+            value="HomePage" >
+
+            <Body>
+<![CDATA[<?xml version='1.0' encoding='utf-8' standalone='no' ?><HomePage channelId="123456" channelCode="cate_sy_fqj_1372232718" page="1" pageSize="12" />]]></Body>
+        </Message>
+
+        <Message
+            createdTime="1393994233937"
+            type="PageBrowsing"
+            value="HomePage" >
+
+            <Body>
+<![CDATA[<?xml version='1.0' encoding='utf-8' standalone='no' ?><HomePage channelId="123456" channelCode="cate_sy_fqj_1372232718" page="1" pageSize="12" />]]></Body>
+        </Message>
+
+        <Message
+            createdTime="1393994234289"
+            type="PageBrowsing"
+            value="HomePage" >
+
+            <Body>
+<![CDATA[<?xml version='1.0' encoding='utf-8' standalone='no' ?><HomePage channelId="123456" channelCode="cate_sy_fqj_1372232718" page="1" pageSize="12" />]]></Body>
+        </Message>
+
+        <Message
+            createdTime="1393994234708"
+            type="PageBrowsing"
+            value="HomePage" >
+
+            <Body>
+<![CDATA[<?xml version='1.0' encoding='utf-8' standalone='no' ?><HomePage channelId="123456" channelCode="cate_sy_fqj_1372232718" page="1" pageSize="12" />]]></Body>
+        </Message>
+
+        <Message
+            createdTime="1393994235125"
+            type="PageBrowsing"
+            value="HomePage" >
+
+            <Body>
+<![CDATA[<?xml version='1.0' encoding='utf-8' standalone='no' ?><HomePage channelId="123456" channelCode="cate_sy_fqj_1372232718" page="1" pageSize="12" />]]></Body>
+        </Message>
+
+        <Message
+            createdTime="1393994235559"
+            type="PageBrowsing"
+            value="HomePage" >
+
+            <Body>
+<![CDATA[<?xml version='1.0' encoding='utf-8' standalone='no' ?><HomePage channelId="123456" channelCode="cate_sy_fqj_1372232718" page="1" pageSize="12" />]]></Body>
+        </Message>
+    </Array>
+
+</MessageArray>

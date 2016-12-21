@@ -1,0 +1,10 @@
+官方v4包各个版本地址:
+http://developer.android.com/intl/zh-cn/tools/support-library/index.html#revisions
+
+
+v4包不光本省class不同  构建jar的JDK版本也不同,可以再/META-INF/MANIFEST.MF中查看到如下信息:
+
+Manifest-Version: 1.0
+Created-By: 1.7.0_95 (Oracle Corporation)
+
+

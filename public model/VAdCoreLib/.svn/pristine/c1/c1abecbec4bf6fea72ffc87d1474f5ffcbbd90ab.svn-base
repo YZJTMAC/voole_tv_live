@@ -1,0 +1,66 @@
+/**
+ *
+ */
+package com.vad.sdk.core.manager;
+
+
+import com.vad.sdk.core.Utils.v30.Lg;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.lang.Thread.UncaughtExceptionHandler;
+import java.net.UnknownHostException;
+
+/**
+ *
+ * @author luojunsheng
+ * @date 2016年10月25日 下午5:02:00
+ * @version 1.1
+ */
+public class CrashHandler implements UncaughtExceptionHandler {
+  private static CrashHandler sHandlerInstance;
+  private CrashHandlerListener mCrashHandlerListener = null;
+  private Thread.UncaughtExceptionHandler mDefaultHandler;
+
+  public interface CrashHandlerListener {
+    public String getExtraInfo();
+  }
+
+  public synchronized static CrashHandler getInstance() {
+    if (sHandlerInstance == null) {
+      sHandlerInstance = new CrashHandler();
+    }
+    return sHandlerInstance;
+  }
+
+  public void init() {
+    mDefaultHandler = Thread.getDefaultUncaughtExceptionHandler();
+    Thread.setDefaultUncaughtExceptionHandler(this);
+  }
+
+  @Override
+  public void uncaughtException(Thread thread, Throwable ex) {
+    Lg.e("CrashHandler , uncaughtException() = " + thread.getName() + " , " + getStackTraceString(ex));
+    android.os.Process.killProcess(android.os.Process.myPid());
+    System.exit(1);
+  }
+
+  private static String getStackTraceString(Throwable tr) {
+    if (tr == null) {
+      return "";
+    }
+    Throwable t = tr;
+    while (t != null) {
+      if (t instanceof UnknownHostException) {
+        return "";
+      }
+      t = t.getCause();
+    }
+
+    StringWriter sw = new StringWriter();
+    PrintWriter pw = new PrintWriter(sw, false);
+    tr.printStackTrace(pw);
+    pw.flush();
+    return sw.toString();
+  }
+}

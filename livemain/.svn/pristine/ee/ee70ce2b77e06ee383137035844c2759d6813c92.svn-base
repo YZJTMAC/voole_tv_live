@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color  name="focus1">#3299e9</color>
+    <color name="gray_white">#f1f1f1</color>
+    <color name="dark_text">#f1f1f1</color>
+    <color name="blue_text">#69bcfc</color>
+</resources>

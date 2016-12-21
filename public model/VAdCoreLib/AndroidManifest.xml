@@ -1,0 +1,18 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.vad.sdk.core"
+    android:versionCode="9"
+    android:versionName="1.0.0-20160726-release" >
+
+    <!-- NOTE(ljs):lib和project合并的时候lib的清单文件不起作用,无法追踪版本号 -->
+
+    <uses-sdk
+        android:minSdkVersion="11"
+        android:targetSdkVersion="18" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:theme="@style/AppTheme" >
+    </application>
+
+</manifest>
